@@ -161,15 +161,6 @@ char pot_etags_version[] = "@(#) pot revision number is 14.21";
 # define CTAGS FALSE
 #endif
 
-/* Exit codes for success and failure.  */
-#ifdef VMS
-# define	GOOD	1
-# define	BAD	0
-#else
-# define	GOOD	0
-# define	BAD	1
-#endif
-
 #define streq(s,t)	(assert((s)!=NULL || (t)!=NULL), !strcmp (s, t))
 #define strneq(s,t,n)	(assert((s)!=NULL || (t)!=NULL), !strncmp (s, t, n))
 
@@ -627,7 +618,7 @@ print_version ()
   puts ("Copyright (C) 1999 Free Software Foundation, Inc. and Ken Arnold");
   puts ("This program is distributed under the same terms as Emacs");
 
-  exit (GOOD);
+  exit (EXIT_SUCCESS);
 }
 
 static void
@@ -764,7 +755,7 @@ Relative ones are stored relative to the output file's directory.");
   puts ("");
   puts ("Report bugs to bug-gnu-emacs@gnu.org");
 
-  exit (GOOD);
+  exit (EXIT_SUCCESS);
 }
 
 
@@ -1180,7 +1171,7 @@ main (argc, argv)
 	fprintf (tagf, "\f\n%s,include\n", *included_files++);
 
       fclose (tagf);
-      exit (GOOD);
+      exit (EXIT_SUCCESS);
     }
 
   /* If CTAGS, we are here.  process_file did not write the tags yet,
@@ -1190,7 +1181,7 @@ main (argc, argv)
       put_entries (head);
       free_tree (head);
       head = NULL;
-      exit (GOOD);
+      exit (EXIT_SUCCESS);
     }
 
   if (update)
@@ -1203,7 +1194,7 @@ main (argc, argv)
 	  sprintf (cmd,
 		   "mv %s OTAGS;fgrep -v '\t%s\t' OTAGS >%s;rm OTAGS",
 		   tagfile, argbuffer[i].what, tagfile);
-	  if (system (cmd) != GOOD)
+	  if (system (cmd) != EXIT_SUCCESS)
 	    fatal ("failed to execute shell command", (char *)NULL);
 	}
       append_to_tagfile = TRUE;
@@ -1223,7 +1214,7 @@ main (argc, argv)
       sprintf (cmd, "sort -o %.*s %.*s", BUFSIZ, tagfile, BUFSIZ, tagfile);
       exit (system (cmd));
     }
-  return GOOD;
+  return EXIT_SUCCESS;
 }
 
 
@@ -2668,8 +2659,7 @@ consider_token (str, len, c, c_extp, cblev, parlev, is_func_or_var)
 	      fvdef = vignore;
 	      return FALSE;
 	    }
-	  if ((*c_extp & C_PLPL) &&
-	      strneq (len >= 10 && str+len-10, "::operator", 10))
+	  if ((*c_extp & C_PLPL) && strneq (str+len-10, "::operator", 10))
 	    {
 	      fvdef = foperator;
 	      *is_func_or_var = TRUE;
@@ -4970,7 +4960,7 @@ erlang_attribute (s)
 	{
 	  pos = skip_spaces (s + pos) - s;
 	  len = erlang_atom (s, pos);
-	  if (len > 0)
+	  if (len != 0)
 	    pfnote (savenstr (& s[pos], len), TRUE,
 		    s, pos + len, lineno, linecharno);
 	}
@@ -5527,7 +5517,7 @@ fatal (s1, s2)
      char *s1, *s2;
 {
   error (s1, s2);
-  exit (BAD);
+  exit (EXIT_FAILURE);
 }
 
 static void
@@ -5535,7 +5525,7 @@ pfatal (s1)
      char *s1;
 {
   perror (s1);
-  exit (BAD);
+  exit (EXIT_FAILURE);
 }
 
 static void
@@ -5549,7 +5539,7 @@ suggest_asking_for_help ()
 	   "-h"
 #endif
 	   );
-  exit (BAD);
+  exit (EXIT_FAILURE);
 }
 
 /* Print error message.  `s1' is printf control string, `s2' is arg for it. */
@@ -5820,3 +5810,5 @@ xrealloc (ptr, size)
     fatal ("virtual memory exhausted", (char *)NULL);
   return result;
 }
+
+/* etags.c ends here */
