@@ -1,79 +1,6 @@
-2003-07-04  Stefan Monnier  <monnier@cs.yale.edu>
+2004-12-10  Thien-Thi Nguyen  <ttn@gnu.org>
 
-	* log-view.el (log-view-message-re): Remove Subversion support,
-	mistakenly added without updating the rest of the code.
-
-2003-06-21  Kenichi Handa  <handa@m17n.org>
-
-	* international/utf-16.el: Many name changes: utf-16-{be,le} ->
-	utf-16{be,le}.
-	(mule-utf-16-le, utf-16-le, mule-utf-16-be, utf-16-be): New coding
-	system aliases for backward compatibility.
-
-	* international/ucs-tables.el (ucs-unify-8859, ucs-fragment-8859):
-	Adjusted for the name change: xxx-utf-16-{le,be} ->
-	xxx-utf-16{le,be}.
-
-2003-05-06  Kenichi Handa  <handa@m17n.org>
-
-	* international/mule-cmds.el (sort-coding-systems): Set lower
-	priority to a utf-16 base coding system.
-
-	* international/utf-16.el (utf-16-le-decode-loop)
-	(utf-16-be-decode-loop): New temporary variables.
-	(ccl-decode-mule-utf-16-le): Use utf-16-le-decode-loop.
-	(ccl-decode-mule-utf-16-be): Use utf-16-be-decode-loop
-	(ccl-decode-mule-utf-16-le-with-signature)
-	(ccl-decode-mule-utf-16-be-with-signature): New CCL programs.
-	(utf-16-le-encode-loop, utf-16-be-encode-loop): New temporary vars.
-	(ccl-encode-mule-utf-16-le): Use utf-16-le-encode-loop.
-	(ccl-encode-mule-utf-16-be): Use utf-16-be-encode-loop
-	(ccl-encode-mule-utf-16-le-with-signature)
-	(ccl-encode-mule-utf-16-be-with-signature): New CCL programs.
-	(mule-utf-16-le-with-signature, mule-utf-16-be-with-signature):
-	New coding systems.
-	(utf-16-le-with-signature, utf-16-be-with-signature): Aliases of
-	the above coding systems.
-
-2003-05-26  Eduardo Mu,Aq(Boz  <emufer@terra.es>  (tiny change)
-
-	* emacs-lisp/cl-extra.el (cl-make-hash-table): Fix typo.
-
-2003-05-10  Oliver Scholz  <alkibiades@gmx.de>
-
-	* startup.el (fancy-splash-default-action): Fix docstring.
-	(command-line-processed): Fix typo.
-
-2003-05-07  Francis J. Wright  <F.J.Wright@qmul.ac.uk>
-
-	* files.el (insert-file-contents-literally): Allow it to be called
-	within a magic file name handler.
-
-2003-05-01  Eduardo Mu,Aq(Boz  <emufer@terra.es>  (tiny change)
-
-	* ls-lisp.el (ls-lisp-format-file-size): New function to implement
-	"-h" switch.
-	(ls-lisp-format): Use it.
-
-2003-04-23  Kenichi Handa  <handa@m17n.org>
-
-	* language/devanagari.el ("Devanagari"): Documentation string modified.
-
-2003-04-12  Stefan Monnier  <monnier@cs.yale.edu>
-
-	* net/ange-ftp.el (ange-ftp-insert-directory):
-	Fix handling of symlinks.
-
-2003-04-12  Morten Welinder  <terra@gnu.org>
-
-	* add-log.el (add-change-log-entry): Get add-log-full-name and
-	add-log-mailing-address from the right buffer.
-
-2003-04-07  Francesco Potort,Al(B  <pot@gnu.org>
-
-	* xt-mouse.el (xterm-mouse-event-read): New function.
-	(xterm-mouse-event): Use it to get xterm sequences above #x7f.
-	Suggested by Aman Bhargava <emacs-bug@amanb.net>.
+	* files.el (auto-mode-alist): Map .com to DCL mode.
 
 2003-03-18  Francesco Potort,Al(B  <pot@gnu.org>
 
@@ -91,8 +18,8 @@
 
 2003-03-04  Rob Kaut  <rob@siworks.com>  (tiny change)
 
-	* progmodes/vhdl-mode.el (vhdl-comment-uncomment-region):
-	Remove two comment characters at start of line instead of one.
+	* progmodes/vhdl-mode.el (vhdl-comment-uncomment-region): Remove
+	two comment characters at start of line instead of one.
 
 2003-03-03  Kenichi Handa  <handa@m17n.org>
 
@@ -167,7 +94,7 @@
 
 2003-01-23  Masatake YAMATO  <jet@gyve.org>
 
-	* progmodes/asm-mode.el (asm-mode): Add syntax table entries for
+	* progmodes/asm-mode.el (asm-mode): Added syntax table entries for
 	/* */ comments.
 
 2003-01-22  Juanma Barranquero  <lektu@terra.es>
@@ -191,13 +118,13 @@
 	* vc-rcs.el (vc-rcs-checkout): Handle t argument for REV.
 	(vc-rcs-checkin): By default, specify the current workfile
 	branch as the check-in revision.
-	(vc-rcs-revert): Unlock only if the user does have the lock.
+        (vc-rcs-revert): Unlock only if the user does have the lock.
 
 	* vc-cvs.el (vc-cvs-checkout): Handle t argument for REV.
 
 	* vc-sccs.el (vc-sccs-checkout): Likewise.
 
-	* log-view.el (log-view-message-re): The rev might be locked.
+        * log-view.el (log-view-message-re): The rev might be locked.
 
 2002-12-18  Gustav H,Ae(Bllberg  <gustav@virtutech.se>  (tiny change)
 
