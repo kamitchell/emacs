@@ -1,6 +1,6 @@
 #### Makefile for the Emacs Lisp Introduction manual
 
-# Copyright (C) 1994, 1995-8, 1999, 2001 Free Software Foundation, Inc.
+# Copyright (C) 2003 Free Software Foundation, Inc.
 
 # This file is part of GNU Emacs.
 
@@ -19,34 +19,34 @@
 # the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
 # Boston, MA 02111-1307, USA.
 
-SHELL = @SHELL@
+srcdir = .
 
-srcdir = @srcdir@
-VPATH = @srcdir@
+infodir = $(srcdir)/../info
 
-infodir = ${srcdir}/../info
-
-INFO_SOURCES = ${srcdir}/emacs-lisp-intro.texi
+INFO_SOURCES = $(srcdir)/emacs-lisp-intro.texi
 # The file name eintr must fit within 5 characters, to allow for
 # -NN extensions to fit into DOS 8+3 limits without clashing
-INFO_TARGETS = ${infodir}/eintr
+INFO_TARGETS = $(infodir)/eintr
 DVI_TARGETS = emacs-lisp-intro.dvi
 
 MAKEINFO = makeinfo
+INSTALL_INFO = install-info
 TEXI2DVI = texi2dvi
 DVIPS = dvips
-ENVADD = TEXINPUTS="$(srcdir):$(TEXINPUTS)" MAKEINFO="$(MAKEINFO) -I$(srcdir)"
+ENVADD = $(srcdir)\..\nt\envadd.bat "TEXINPUTS=$(srcdir);$(TEXINPUTS)" \
+	 "MAKEINFO=$(MAKEINFO) -I$(srcdir)" /C
 
 .SUFFIXES: .dvi .ps .texi
 
 info: $(INFO_TARGETS)
+	$(INSTALL_INFO) --info-dir=$(infodir) $(INFO_TARGETS)
 
 dvi: $(DVI_TARGETS)
 
-${infodir}/eintr: ${INFO_SOURCES}
+$(infodir)/eintr: $(INFO_SOURCES)
 	$(MAKEINFO) -o $@ $(srcdir)/emacs-lisp-intro.texi
 
-emacs-lisp-intro.dvi: ${INFO_SOURCES}
+emacs-lisp-intro.dvi: $(INFO_SOURCES)
 	$(ENVADD) $(TEXI2DVI) $(srcdir)/emacs-lisp-intro.texi
 
 emacs-lisp-intro.html: $(INFO_SOURCES)
@@ -59,7 +59,7 @@ mostlyclean:
 	rm -f  *.log *.cp *.fn *.ky *.pg *.vr *.tp
 
 clean: mostlyclean
-	rm -f *.dvi
+	rm -f *.dvi $(infodir)/eintr*
 
 distclean: clean
 
@@ -70,4 +70,4 @@ maintainer-clean: distclean
 # Otherwise a system limit (for SysV at least) may be exceeded.
 .NOEXPORT:
 
-# arch-tag: eb660994-cd29-4ab8-8043-5042e2dbde84
+# arch-tag: d713164a-e683-4ce3-a39e-3bf82f2f82f4

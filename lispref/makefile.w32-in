@@ -1,6 +1,6 @@
 # Makefile for the GNU Emacs Lisp Reference Manual.
 
-# Copyright (C) 1990,1991,1992,1993,1994,1995,1996,1998,1999,2000,2001
+# Copyright (C) 2003
 #  Free Software Foundation, Inc.
 
 # This file is part of GNU Emacs.
@@ -21,30 +21,26 @@
 # Boston, MA 02111-1307, USA.
 
 # Standard configure variables.
-srcdir = @srcdir@
-
-# Tell make where to find source files; this is needed for the makefiles.
-VPATH=@srcdir@
+srcdir = .
 
 infodir = $(srcdir)/../info
 
 # Redefine `TEX' if `tex' does not invoke plain TeX.  For example:
 # TEX=platex
 TEX=tex
-SHELL=/bin/sh
 INSTALL_INFO = install-info
-MAKEINFO=makeinfo
+MAKEINFO = makeinfo
 
 # The environment variable and its value to add $(srcdir) to the path
 # searched for TeX input files.
-texinputdir = TEXINPUTS=$(srcdir):"$(TEXINPUTS)"
+texinputdir = $(srcdir)\..\nt\envadd.bat "TEXINPUTS=$(srcdir);$(TEXINPUTS)" /C
 
 # The name of the manual:
 VERSION=2.9
 manual = elisp-manual-21-$(VERSION)
 
 # Uncomment this line for permuted index.
-# permuted_index = 1
+# permuted_index = 1 
 
 # List of all the texinfo files in the manual:
 
@@ -109,62 +105,36 @@ srcs = \
 
 # The info file is named `elisp'.
 info: $(infodir)/elisp
+	$(INSTALL_INFO) --info-dir=$(infodir) $(infodir)/elisp
 
 $(infodir)/elisp: $(srcs) index.texi
 	$(MAKEINFO) -I. -I$(srcdir) $(srcdir)/elisp.texi -o $(infodir)/elisp
 
 elisp.dvi: $(srcs) index.texi
-	# Avoid losing old contents of aux file entirely.
-	-mv elisp.aux elisp.oaux
-	# First shot to define xrefs.
+#	Avoid losing old contents of aux file entirely.
+	-ren elisp.aux elisp.oaux
+#	First shot to define xrefs.
 	$(texinputdir) $(TEX) $(srcdir)/elisp.texi
-	if [ a${permuted_index} != a ]; \
-	then \
-	  $(srcdir)/permute-index; \
-	  mv permuted.fns elisp.fns; \
-	  texindex elisp.tp; \
-	else \
-	  texindex elisp.??; \
-	fi
+	if not a$(permuted_index) == a  sh $(srcdir)/permute-index
+	if not a$(permuted_index) == a  ren permuted.fns elisp.fns
+	if not a$(permuted_index) == a  texindex elisp.tp
+	if a$(permuted_index) == a  texindex elisp.??
 	$(texinputdir) $(TEX) $(srcdir)/elisp.texi
 
 index.texi:
-	if [ a${permuted_index} != a ]; \
-	then \
-	  ln -s $(srcdir)/index.perm index.texi || ln $(srcdir)/index.perm index.texi || cp $(srcdir)/index.perm index.texi; \
-	else \
-	  ln -s $(srcdir)/index.unperm index.texi || ln $(srcdir)/index.unperm index.texi || cp $(srcdir)/index.unperm index.texi; \
-	fi
-
-install: elisp
-	$(srcdir)/mkinstalldirs $(infodir)
-	cp elisp elisp-* $(infodir)
-	${INSTALL_INFO} --info-dir=${infodir} ${infodir}/elisp
+	if a$(permuted_index) == a  cp $(srcdir)/index.unperm index.texi
+	if not a$(permuted_index) == a  cp $(srcdir)/index.perm index.texi
 
 clean:
 	rm -f *.toc *.aux *.log *.cp *.cps *.fn *.fns *.tp *.tps \
               *.vr *.vrs *.pg *.pgs *.ky *.kys
-	rm -f make.out core
+	rm -f make.out core 
 	rm -f index.texi
+	rm -f $(infodir)/elisp*
 
 distclean: clean
 
 maintainer-clean: clean
 	rm -f elisp elisp-* elisp.dvi elisp.oaux
 
-dist: elisp elisp.dvi
-	-rm -rf temp
-	-mkdir temp
-	-mkdir temp/$(manual)
-	-ln $(srcdir)/README $(srcdir)/configure.in $(srcdir)/configure \
- $(srcdir)/Makefile.in $(srcdir)/permute-index $(srcs) \
- $(srcdir)/../man/texinfo.tex \
- elisp.dvi elisp.aux elisp.??s elisp elisp-[0-9] elisp-[0-9][0-9] \
- temp/$(manual)
-	-(cd temp/$(manual); rm -f mkinstalldirs)
-	cp $(srcdir)/mkinstalldirs temp/$(manual)
-	(cd temp/$(manual); rm -f *~)
-	(cd temp; tar chf - $(manual)) | gzip > $(manual).tar.gz
-	-rm -rf temp
-
-# arch-tag: f5a1a94d-62e1-4460-a2d1-f02e538ab554
+# arch-tag: da68f1c2-536d-4d41-9150-7b01434eda3f
