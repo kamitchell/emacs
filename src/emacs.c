@@ -261,7 +261,7 @@ Display options:\n\
 --border-width, -bw WIDTH	width of main border\n\
 --cursor-color, -cr COLOR	color of the Emacs cursor indicating point\n\
 --display, -d DISPLAY		use X server DISPLAY\n\
---font, -fn FONT		default font; must be fixed-widthp\n\
+--font, -fn FONT		default font; must be fixed-width\n\
 --foreground-color, -fg COLOR	window foreground color\n\
 --geometry, -g GEOMETRY		window geometry\n\
 --iconic			start Emacs in iconified state\n\
@@ -271,7 +271,7 @@ Display options:\n\
 --mouse-color, -ms COLOR 	mouse cursor color in Emacs window\n\
 --name NAME			title of main Emacs window\n\
 --reverse-video, -r, -rv	switch foreground and background\n\
---title, -T, -wn, TITLE		title for Emacs windows\n\
+--title, -T, -wn TITLE		title for Emacs windows\n\
 --vertical-scroll-bars, -vb	enable vertical scroll bars\n\
 --xrm XRESOURCES		set additional X resources\n\
 \n\
@@ -291,12 +291,6 @@ int fatal_error_code;
 
 /* Nonzero if handling a fatal error already */
 int fatal_error_in_progress;
-
-/* If non-null, call this function from fata_error_signal before
-   committing suicide.  */
-
-void (*fatal_error_signal_hook) P_ ((void));
-
 
 #ifdef SIGUSR1
 SIGTYPE
@@ -357,10 +351,6 @@ fatal_error_signal (sig)
 #ifndef MSDOS
   sigunblock (sigmask (fatal_error_code));
 #endif
-
-  if (fatal_error_signal_hook)
-    fatal_error_signal_hook ();
-  
   kill (getpid (), fatal_error_code);
 #endif /* not VMS */
 }
@@ -552,7 +542,7 @@ Any directory names are omitted.")
 
 DEFUN ("invocation-directory", Finvocation_directory, Sinvocation_directory,
   0, 0, 0,
-  "Return the directory name in which the Emacs executable was located")
+  "Return the directory name in which the Emacs executable was located.")
   ()
 {
   return Fcopy_sequence (Vinvocation_directory);
@@ -1950,7 +1940,6 @@ This function exists on systems that use HAVE_SHM.")
   extern char my_edata[];
   Lisp_Object tem;
 
-  check_pure_size ();
   CHECK_STRING (filename, 0);
   filename = Fexpand_file_name (filename, Qnil);
 
@@ -1984,9 +1973,7 @@ You must run Emacs in batch mode in order to dump it.")
   extern char my_edata[];
   Lisp_Object tem;
   Lisp_Object symbol;
-  int count = BINDING_STACK_SIZE ();
-
-  check_pure_size ();
+  int count = specpdl_ptr - specpdl;
 
   if (! noninteractive)
     error ("Dumping Emacs works only in batch mode");
