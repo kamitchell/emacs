@@ -67,31 +67,12 @@ will be parsed and highlighted as soon as you try to move to them."
 
 (defcustom grep-command nil
   "The default grep command for \\[grep].
-If the grep program used supports an option to always include file names
-in its output (such as the `-H' option to GNU grep), it's a good idea to
-include it when specifying `grep-command'.
-
 The default value of this variable is set up by `grep-compute-defaults';
 call that function before using this variable in your program."
   :type 'string
   :get '(lambda (symbol)
 	  (or grep-command
 	      (progn (grep-compute-defaults) grep-command)))
-  :group 'compilation)
-
-(defcustom grep-use-null-device 'auto-detect
-  "If non-nil, append the value of `null-device' to grep commands.
-This is done to ensure that the output of grep includes the filename of
-any match in the case where only a single file is searched, and is not
-necessary if the grep program used supports the `-H' option.
-
-The default value of this variable is set up by `grep-compute-defaults';
-call that function before using this variable in your program."
-  :type 'boolean
-  :get '(lambda (symbol)
-	  (if (and grep-use-null-device (not (eq grep-use-null-device t)))
-	      (progn (grep-compute-defaults) grep-use-null-device)
-	    grep-use-null-device))
   :group 'compilation)
 
 (defcustom grep-find-command nil
@@ -593,38 +574,15 @@ to a function that generates a unique name."
 	   (cons msg code)))))
 
 (defun grep-compute-defaults ()
-  (unless (or (not grep-use-null-device) (eq grep-use-null-device t))
-    (setq grep-use-null-device
-	  (with-temp-buffer
-	    (let ((hello-file (expand-file-name "HELLO" data-directory)))
-	      (not
-	       (and (equal (condition-case nil
-			       (if grep-command
-				   ;; `grep-command' is already set, so
-				   ;; use that for testing.
-				   (call-process-shell-command
-				    grep-command nil t nil
-				    "^English" hello-file)
-				 ;; otherwise use `grep-program'
-				 (call-process grep-program nil t nil
-					       "-nH" "^English" hello-file))
-			     (error nil))
-			   0)
-		    (progn
-		      (goto-char (point-min))
-		      (looking-at
-		       (concat (regexp-quote hello-file)
-			       ":[0-9]+:English")))))))))
   (unless grep-command
     (setq grep-command
-	  (let ((required-options (if grep-use-null-device "-n" "-nH")))
-	    (if (equal (condition-case nil ; in case "grep" isn't in exec-path
-			   (call-process grep-program nil nil nil
-					 "-e" "foo" null-device)
-			 (error nil))
-		       1)
-		(format "%s %s -e " grep-program required-options)
-	      (format "%s %s " grep-program required-options)))))
+	  (if (equal (condition-case nil ; in case "grep" isn't in exec-path
+			 (call-process grep-program nil nil nil
+				       "-e" "foo" null-device)
+		       (error nil))
+		     1)
+	      (format "%s -n -e " grep-program)
+	    (format "%s -n " grep-program))))
   (unless grep-find-use-xargs
     (setq grep-find-use-xargs
 	  (if (and
@@ -664,8 +622,7 @@ in the grep command history (or into `grep-command'
 if that history list is empty)."
   (interactive
    (let (grep-default (arg current-prefix-arg))
-     (unless (and grep-command
-		  (or (not grep-use-null-device) (eq grep-use-null-device t)))
+     (unless grep-command
        (grep-compute-defaults))
      (when arg
        (let ((tag-default
@@ -689,7 +646,7 @@ if that history list is empty)."
   ;; Setting process-setup-function makes exit-message-function work
   ;; even when async processes aren't supported.
   (let* ((compilation-process-setup-function 'grep-process-setup)
-	 (buf (compile-internal (if (and grep-use-null-device null-device)
+	 (buf (compile-internal (if null-device
 				    (concat command-args " " null-device)
 				  command-args)
 				"No more grep hits" "grep"
@@ -743,26 +700,6 @@ visible rather than the begining."
   :version "20.3"
   :group 'compilation)
 
-
-(defun compilation-buffer-name (mode-name name-function)
-  "Return the name of a compilation buffer to use.
-If NAME-FUNCTION is non-nil, call it with one argument MODE-NAME
-to determine the buffer name.
-Likewise if `compilation-buffer-name-function' is non-nil.
-If current buffer is in Compilation mode for the same mode name
-return the name of the current buffer, so that it gets reused.
-Otherwise, construct a buffer name from MODE-NAME."
-  (cond (name-function 
-	 (funcall name-function mode-name))
-	(compilation-buffer-name-function 
-	 (funcall compilation-buffer-name-function mode-name))
-	((and (eq major-mode 'compilation-mode)
-	      (equal mode-name (nth 2 compilation-arguments)))
-	 (buffer-name))
-	(t
-	 (concat "*" (downcase mode-name) "*"))))
-
-
 (defun compile-internal (command error-message
 				 &optional name-of-mode parser
 				 error-regexp-alist name-function
@@ -792,8 +729,11 @@ Returns the compilation buffer created."
       (or name-of-mode
 	  (setq name-of-mode "Compilation"))
       (setq outbuf
-	    (get-buffer-create (compilation-buffer-name name-of-mode
-							name-function)))
+	    (get-buffer-create
+	     (funcall (or name-function compilation-buffer-name-function
+			  (function (lambda (mode)
+				      (concat "*" (downcase mode) "*"))))
+		      name-of-mode)))
       (set-buffer outbuf)
       (let ((comp-proc (get-buffer-process (current-buffer))))
 	(if comp-proc
@@ -937,7 +877,10 @@ exited abnormally with code %d\n"
 		 (select-window window)
 		 (enlarge-window (- compilation-window-height
 				    (window-height))))
-	     (select-window w))))))
+	     ;; The enlarge-window above may have deleted W, if
+	     ;; compilation-window-height is large enough.
+	     (when (window-live-p w)
+	       (select-window w)))))))
 
 (defvar compilation-minor-mode-map
   (let ((map (make-sparse-keymap)))
