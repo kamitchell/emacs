@@ -1193,17 +1193,15 @@ This function ensures that none of these modifications will take place."
 	(coding-system-for-read 'no-conversion)
 	(coding-system-for-write 'no-conversion)
 	(find-buffer-file-type-function
-         (if (fboundp 'find-buffer-file-type)
-             (symbol-function 'find-buffer-file-type)
-           nil))
-        (inhibit-file-name-handlers
-         (append '(jka-compr-handler image-file-handler)
-                 inhibit-file-name-handlers))
-        (inhibit-file-name-operation 'insert-file-contents))
+	 (if (fboundp 'find-buffer-file-type)
+	     (symbol-function 'find-buffer-file-type)
+	   nil))
+	(inhibit-file-name-handlers '(jka-compr-handler image-file-handler))
+	(inhibit-file-name-operation 'insert-file-contents))
     (unwind-protect
-         (progn
-           (fset 'find-buffer-file-type (lambda (filename) t))
-           (insert-file-contents filename visit beg end replace))
+	(progn
+	  (fset 'find-buffer-file-type (lambda (filename) t))
+	  (insert-file-contents filename visit beg end replace))
       (if find-buffer-file-type-function
 	  (fset 'find-buffer-file-type find-buffer-file-type-function)
 	(fmakunbound 'find-buffer-file-type)))))
@@ -1470,6 +1468,7 @@ in that case, this function acts as if `enable-local-variables' were t."
      ("BROWSE\\'" . ebrowse-tree-mode)
      ("\\.ebrowse\\'" . ebrowse-tree-mode)
      ("#\\*mail\\*" . mail-mode)
+     ("\\.com\\'" . dcl-mode)
      ;; Get rid of any trailing .n.m and try again.
      ;; This is for files saved by cvs-merge that look like .#<file>.<rev>
      ;; or .#<file>.<rev>-<rev> or VC's <file>.~<rev>~.
