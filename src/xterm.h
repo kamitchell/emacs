@@ -183,9 +183,6 @@ struct x_display_info
   /* The root window of this screen.  */
   Window root_window;
 
-  /* Client leader window.  */
-  Window client_leader_window;
-
   /* The cursor to use for vertical scroll bars.  */
   Cursor vertical_scroll_bar_cursor;
 
@@ -292,7 +289,6 @@ struct x_display_info
   /* Other WM communication */
   Atom Xatom_wm_configure_denied; /* When our config request is denied */
   Atom Xatom_wm_window_moved;     /* When the WM moves us.  */
-  Atom Xatom_wm_client_leader;    /* Id of client leader window.  */
 
   /* EditRes protocol */
   Atom Xatom_editres;
@@ -360,11 +356,6 @@ struct x_display_info
      use this directly, call x_color_cells instead.  */
   XColor *color_cells;
   int ncolor_cells;
-
-  /* Bits and shifts to use to compose pixel values on Direct and TrueColor
-     visuals.  */
-  int red_bits, blue_bits, green_bits;
-  int red_offset, blue_offset, green_offset;
 };
 
 #ifdef HAVE_X_I18N
@@ -409,6 +400,9 @@ extern struct font_info *x_get_font_info P_ ((struct frame *f, int));
 extern struct font_info *x_load_font P_ ((struct frame *, char *, int));
 extern struct font_info *x_query_font P_ ((struct frame *, char *));
 extern void x_find_ccl_program P_ ((struct font_info *));
+extern Lisp_Object x_get_font_repertory P_ ((struct frame *,
+					     struct font_info *));
+
 
 /* Each X frame object points to its own struct x_output object
    in the output_data.x field.  The x_output structure contains
@@ -1038,7 +1032,7 @@ extern void widget_store_internal_border P_ ((Widget));
 
 /* Defined in xsmfns.c */
 #ifdef HAVE_X_SM
-extern void x_session_initialize P_ ((struct x_display_info *dpyinfo));
+extern void x_session_initialize P_ ((void));
 extern int x_session_check_input P_ ((struct input_event *bufp,
                                       int *numchars));
 extern int x_session_have_connection P_ ((void));
@@ -1062,6 +1056,3 @@ extern int x_session_have_connection P_ ((void));
    (nr).y = (ry),					\
    (nr).width = (rwidth),				\
    (nr).height = (rheight))
-
-/* arch-tag: 78a7972a-b18f-4694-861a-0780c4b3090e
-   (do not change this comment) */

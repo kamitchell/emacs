@@ -27,7 +27,7 @@ Boston, MA 02111-1307, USA.  */
 #include "commands.h"
 #include "buffer.h"
 #include "window.h"
-#include "charset.h"
+#include "character.h"
 #include "syntax.h"
 
 /* An abbrev table is an obarray.
@@ -356,13 +356,10 @@ Returns the abbrev symbol, if expansion took place.  */)
     {
       SET_PT (wordstart);
 
+      del_range_both (wordstart, wordstart_byte, wordend, wordend_byte, 1);
+
       insert_from_string (expansion, 0, 0, SCHARS (expansion),
 			  SBYTES (expansion), 1);
-      del_range_both (PT, PT_BYTE,
-		      wordend + (PT - wordstart),
-		      wordend_byte + (PT_BYTE - wordstart_byte),
-		      1);
-
       SET_PT (PT + whitecnt);
 
       if (uccount && !lccount)
@@ -388,9 +385,15 @@ Returns the abbrev symbol, if expansion took place.  */)
 	  int pos = wordstart_byte;
 
 	  /* Find the initial.  */
-	  while (pos < PT_BYTE
-		 && SYNTAX (*BUF_BYTE_ADDRESS (current_buffer, pos)) != Sword)
-	    pos++;
+	  if (multibyte)
+	    while (pos < PT_BYTE
+		   && SYNTAX (FETCH_MULTIBYTE_CHAR (pos)) != Sword)
+	      INC_POS (pos);
+	  else
+	    while (pos < PT_BYTE
+		   && (SYNTAX (*BUF_BYTE_ADDRESS (current_buffer, pos))
+		       != Sword))
+	      pos++;
 
 	  /* Change just that.  */
 	  pos = BYTE_TO_CHAR (pos);
@@ -693,6 +696,3 @@ the current abbrev table before abbrev lookup happens.  */);
   defsubr (&Sinsert_abbrev_table_description);
   defsubr (&Sdefine_abbrev_table);
 }
-
-/* arch-tag: b721db69-f633-44a8-a361-c275acbdad7d
-   (do not change this comment) */

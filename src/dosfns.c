@@ -38,7 +38,7 @@ Boston, MA 02111-1307, USA.  */
 #include "dosfns.h"
 #include "msdos.h"
 #include "dispextern.h"
-#include "charset.h"
+#include "character.h"
 #include "coding.h"
 #include <dpmi.h>
 #include <go32.h>
@@ -651,6 +651,3 @@ If zero, the decimal point key returns the country code specific value.  */);
   dos_decimal_point = 0;
 }
 #endif /* MSDOS */
-
-/* arch-tag: f5ea8847-a014-42c9-83f5-7738ad640b17
-   (do not change this comment) */

@@ -38,7 +38,7 @@ Boston, MA 02111-1307, USA.  */
 #include "frame.h"	/* Need this to get the X window of selected_frame */
 #include "blockinput.h"
 #include "buffer.h"
-#include "charset.h"
+#include "character.h"
 #include "coding.h"
 #include "composite.h"
 
@@ -764,6 +764,3 @@ set to nil.  */);
 }
 
 #endif /* MSDOS */
-
-/* arch-tag: 085a22c8-7324-436e-a6da-102464ce95d8
-   (do not change this comment) */

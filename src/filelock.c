@@ -55,7 +55,7 @@ extern int errno;
 
 #include "lisp.h"
 #include "buffer.h"
-#include "charset.h"
+#include "character.h"
 #include "coding.h"
 #include "systime.h"
 
@@ -770,6 +770,3 @@ syms_of_filelock ()
 }
 
 #endif /* CLASH_DETECTION */
-
-/* arch-tag: e062676d-50b2-4be0-ab96-197c81b181a1
-   (do not change this comment) */

@@ -28,7 +28,7 @@ Boston, MA 02111-1307, USA.  */
 #endif
 
 #include "lisp.h"
-#include "charset.h"
+#include "character.h"
 #include "keyboard.h"
 #include "frame.h"
 #include "dispextern.h"
@@ -866,6 +866,3 @@ int w32_BDF_to_x_font (char *file, char* xstr, int len)
   CloseHandle (hfilemap);
   return retval;
 }
-
-/* arch-tag: 2e9a45de-0c54-4a0e-95c8-2d67b2b1fa32
-   (do not change this comment) */

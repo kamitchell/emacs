@@ -31,7 +31,7 @@ Boston, MA 02111-1307, USA.
 #include <string.h>
 
 #include "lisp.h"
-#include "charset.h"
+#include "character.h"
 #include "coding.h"
 #include "disptab.h"
 #include "termhooks.h"
@@ -721,6 +721,3 @@ scroll-back buffer.  */);
   defsubr (&Sset_cursor_size);
   defsubr (&Sset_message_beep);
 }
-
-/* arch-tag: a390a07f-f661-42bc-aeb4-e6d8bf860337
-   (do not change this comment) */

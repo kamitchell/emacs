@@ -29,6 +29,8 @@ Boston, MA 02111-1307, USA.  */
 #include "termchar.h"
 #include "termopts.h"
 #include "lisp.h"
+#include "buffer.h"
+#include "character.h"
 #include "charset.h"
 #include "coding.h"
 #include "keyboard.h"
@@ -810,7 +812,6 @@ encode_terminal_code (src, dst, src_len, dst_len, consumed)
   int len;
   register int tlen = GLYPH_TABLE_LENGTH;
   register Lisp_Object *tbase = GLYPH_TABLE_BASE;
-  int result;
   struct coding_system *coding;
 
   /* If terminal_coding does any conversion, use it, otherwise use
@@ -829,7 +830,7 @@ encode_terminal_code (src, dst, src_len, dst_len, consumed)
 
 	  if (g < 0 || g >= tlen)
 	    {
-	      /* This glyph doesn't has an entry in Vglyph_table.  */
+	      /* This glyph doesn't have an entry in Vglyph_table.  */
 	      if (! CHAR_VALID_P (src->u.ch, 0))
 		{
 		  len = 1;
@@ -868,12 +869,13 @@ encode_terminal_code (src, dst, src_len, dst_len, consumed)
 		}
 	    }
 
-	  result = encode_coding (coding, buf, dst, len, dst_end - dst);
+	  coding->source = buf;
+	  coding->destination = dst;
+	  coding->dst_bytes = dst_end - dst;
+	  encode_coding_object (coding, Qnil, 0, 0, 1, len, Qnil);
 	  len -= coding->consumed;
 	  dst += coding->produced;
-	  if (result == CODING_FINISH_INSUFFICIENT_DST
-	      || (result == CODING_FINISH_INSUFFICIENT_SRC
-		  && len > dst_end - dst))
+	  if (coding->result == CODING_RESULT_INSUFFICIENT_DST)
 	    /* The remaining output buffer is too short.  We must
 	       break the loop here without increasing SRC so that the
 	       next call of this function starts from the same glyph.  */
@@ -977,8 +979,10 @@ write_glyphs (string, len)
   if (CODING_REQUIRE_FLUSHING (&terminal_coding))
     {
       terminal_coding.mode |= CODING_MODE_LAST_BLOCK;
-      encode_coding (&terminal_coding, "", conversion_buffer,
-		     0, conversion_buffer_size);
+      terminal_coding.source = (unsigned char *) "";
+      terminal_coding.destination = conversion_buffer;
+      terminal_coding.dst_bytes = conversion_buffer_size;
+      encode_coding_object (&terminal_coding, Qnil, 0, 0, 0, 0, Qnil);
       if (terminal_coding.produced > 0)
 	{
 	  fwrite (conversion_buffer, 1, terminal_coding.produced, stdout);
@@ -1721,13 +1725,7 @@ produce_glyphs (it)
     }
   else
     {
-      /* A multi-byte character.  The display width is fixed for all
-	 characters of the set.  Some of the glyphs may have to be
-	 ignored because they are already displayed in a continued
-	 line.  */
-      int charset = CHAR_CHARSET (it->c);
-
-      it->pixel_width = CHARSET_WIDTH (charset);
+      it->pixel_width = CHAR_WIDTH (it->c);
       it->nglyphs = it->pixel_width;
 
       if (it->glyph_row)
@@ -2159,8 +2157,7 @@ term_init (terminal_type)
 {
   char *area;
   char **address = &area;
-  char *buffer = NULL;
-  int buffer_size = 4096;
+  char buffer[2044];
   register char *p;
   int status;
   struct frame *sf = XFRAME (selected_frame);
@@ -2171,6 +2168,9 @@ term_init (terminal_type)
   Wcm_clear ();
 
   area = (char *) xmalloc (2044);
+
+  if (area == 0)
+    abort ();
 
   FrameRows = FRAME_LINES (sf);
   FrameCols = FRAME_COLS (sf);
@@ -2200,7 +2200,6 @@ term_init (terminal_type)
 
   Wcm_clear ();
 
-  buffer = (char *) xmalloc (buffer_size);
   status = tgetent (buffer, terminal_type);
   if (status < 0)
     {
@@ -2228,13 +2227,13 @@ to do `unset TERMCAP' (C-shell: `unsetenv TERMCAP') as well.",
 	     terminal_type);
 #endif
     }
-
-#ifndef TERMINFO
-  if (strlen (buffer) >= buffer_size)
+#ifdef TERMINFO
+  area = (char *) xmalloc (2044);
+#else
+  area = (char *) xmalloc (strlen (buffer));
+#endif /* not TERMINFO */
+  if (area == 0)
     abort ();
-  buffer_size = strlen (buffer);
-#endif
-  area = (char *) xmalloc (buffer_size);
 
   TS_ins_line = tgetstr ("al", address);
   TS_ins_multi_lines = tgetstr ("AL", address);
@@ -2559,8 +2558,6 @@ to do `unset TERMCAP' (C-shell: `unsetenv TERMCAP') as well.",
   FRAME_CAN_HAVE_SCROLL_BARS (sf) = 0;
   FRAME_VERTICAL_SCROLL_BAR_TYPE (sf) = vertical_scroll_bar_none;
 #endif /* WINDOWSNT */
-
-  xfree (buffer);
 }
 
 /* VARARGS 1 */
@@ -2596,5 +2593,3 @@ The function should accept no arguments.  */);
   defsubr (&Stty_display_color_cells);
 }
 
-/* arch-tag: 498e7449-6f2e-45e2-91dd-b7d4ca488193
-   (do not change this comment) */

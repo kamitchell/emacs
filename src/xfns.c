@@ -42,6 +42,7 @@ Boston, MA 02111-1307, USA.  */
 #include "keyboard.h"
 #include "blockinput.h"
 #include <epaths.h>
+#include "character.h"
 #include "charset.h"
 #include "coding.h"
 #include "fontset.h"
@@ -124,14 +125,6 @@ static Lisp_Object Vmotif_version_string;
 #endif /* USE_MOTIF */
 
 #endif /* USE_X_TOOLKIT */
-
-#ifdef USE_GTK
-
-/* GTK+ version info */
-
-static Lisp_Object Vgtk_version_string;
-
-#endif /* USE_GTK */
 
 #ifdef HAVE_X11R4
 #define MAXREQUEST(dpy) (XMaxRequestSize (dpy))
@@ -1846,49 +1839,29 @@ x_encode_text (string, coding_system, selectionp, text_bytes, stringp)
      int *text_bytes, *stringp;
      int selectionp;
 {
-  unsigned char *str = SDATA (string);
-  int chars = SCHARS (string);
-  int bytes = SBYTES (string);
-  int charset_info;
-  int bufsize;
-  unsigned char *buf;
+  int result = string_xstring_p (string);
   struct coding_system coding;
   extern Lisp_Object Qcompound_text_with_extensions;
 
-  charset_info = find_charset_in_text (str, chars, bytes, NULL, Qnil);
-  if (charset_info == 0)
+  if (result == 0)
     {
       /* No multibyte character in OBJ.  We need not encode it.  */
-      *text_bytes = bytes;
+      *text_bytes = SBYTES (string);
       *stringp = 1;
-      return str;
+      return SDATA (string);
     }
 
   setup_coding_system (coding_system, &coding);
-  if (selectionp
-      && SYMBOLP (coding.pre_write_conversion)
-      && !NILP (Ffboundp (coding.pre_write_conversion)))
-    {
-      string = run_pre_post_conversion_on_str (string, &coding, 1);
-      str = SDATA (string);
-      chars = SCHARS (string);
-      bytes = SBYTES (string);
-    }
-  coding.src_multibyte = 1;
-  coding.dst_multibyte = 0;
-  coding.mode |= CODING_MODE_LAST_BLOCK;
-  if (coding.type == coding_type_iso2022)
-    coding.flags |= CODING_FLAG_ISO_SAFE;
+  coding.mode |= (CODING_MODE_SAFE_ENCODING | CODING_MODE_LAST_BLOCK);
   /* We suppress producing escape sequences for composition.  */
-  coding.composing = COMPOSITION_DISABLED;
-  bufsize = encoding_buffer_size (&coding, bytes);
-  buf = (unsigned char *) xmalloc (bufsize);
-  encode_coding (&coding, str, buf, bytes, bufsize);
+  coding.common_flags &= ~CODING_ANNOTATION_MASK;
+  coding.dst_bytes = SCHARS (string) * 2;
+  coding.destination = (unsigned char *) xmalloc (coding.dst_bytes);
+  encode_coding_object (&coding, string, 0, 0,
+			SCHARS (string), SBYTES (string), Qnil);
   *text_bytes = coding.produced;
-  *stringp = (charset_info == 1
-	      || (!EQ (coding_system, Qcompound_text)
-		  && !EQ (coding_system, Qcompound_text_with_extensions)));
-  return buf;
+  *stringp = (result == 1 || !EQ (coding_system, Qcompound_text));
+  return coding.destination;
 }
 
 
@@ -3330,35 +3303,39 @@ This function is an internal primitive--use `make-frame' instead.  */)
 
     font = x_get_arg (dpyinfo, parms, Qfont, "font", "Font", RES_TYPE_STRING);
 
-    BLOCK_INPUT;
-    /* First, try whatever font the caller has specified.  */
-    if (STRINGP (font))
+    /* If the caller has specified no font, try out fonts which we
+       hope have bold and italic variations.  */
+    if (!STRINGP (font))
       {
-	tem = Fquery_fontset (font, Qnil);
-	if (STRINGP (tem))
-	  font = x_new_fontset (f, SDATA (tem));
-	else
-	  font = x_new_font (f, SDATA (font));
+	char *names[]
+	  = { "-adobe-courier-medium-r-*-*-*-120-*-*-*-*-iso8859-1",
+	      "-misc-fixed-medium-r-normal-*-*-140-*-*-c-*-iso8859-1",
+	      "-*-*-medium-r-normal-*-*-140-*-*-c-*-iso8859-1",
+	      /* This was formerly the first thing tried, but it finds
+		 too many fonts and takes too long.  */
+	      "-*-*-medium-r-*-*-*-*-*-*-c-*-iso8859-1",
+	      /* If those didn't work, look for something which will
+		 at least work.  */
+	      "-*-fixed-*-*-*-*-*-140-*-*-c-*-iso8859-1",
+	      NULL };
+	int i;
+
+	BLOCK_INPUT;
+	for (i = 0; names[i]; i++)
+	  {
+	    Lisp_Object list;
+
+	    list = x_list_fonts (f, build_string (names[i]), 0, 1);
+	    if (CONSP (list))
+	      {
+		font = XCAR (list);
+		break;
+	      }
+	  }
+	UNBLOCK_INPUT;
+	if (! STRINGP (font))
+	  font = build_string ("fixed");
       }
-
-    /* Try out a font which we hope has bold and italic variations.  */
-    if (!STRINGP (font))
-      font = x_new_font (f, "-adobe-courier-medium-r-*-*-*-120-*-*-*-*-iso8859-1");
-    if (!STRINGP (font))
-      font = x_new_font (f, "-misc-fixed-medium-r-normal-*-*-140-*-*-c-*-iso8859-1");
-    if (! STRINGP (font))
-      font = x_new_font (f, "-*-*-medium-r-normal-*-*-140-*-*-c-*-iso8859-1");
-    if (! STRINGP (font))
-      /* This was formerly the first thing tried, but it finds too many fonts
-	 and takes too long.  */
-      font = x_new_font (f, "-*-*-medium-r-*-*-*-*-*-*-c-*-iso8859-1");
-    /* If those didn't work, look for something which will at least work.  */
-    if (! STRINGP (font))
-      font = x_new_font (f, "-*-fixed-*-*-*-*-*-140-*-*-c-*-iso8859-1");
-    UNBLOCK_INPUT;
-    if (! STRINGP (font))
-      font = build_string ("fixed");
-
     x_default_parameter (f, parms, Qfont, font,
 			 "font", "Font", RES_TYPE_STRING);
   }
@@ -3532,19 +3509,6 @@ This function is an internal primitive--use `make-frame' instead.  */)
       else
 	/* Must have been Qnil.  */
 	;
-    }
-
-  /* Set the WM leader property.  GTK does this itself, so this is not
-     needed when using GTK.  */
-  if (dpyinfo->client_leader_window != 0)
-    {
-      BLOCK_INPUT;
-      XChangeProperty (FRAME_X_DISPLAY (f),
-                       FRAME_OUTER_WINDOW (f),
-                       dpyinfo->Xatom_wm_client_leader,
-                       XA_WINDOW, 32, PropModeReplace,
-                       (char *) &dpyinfo->client_leader_window, 1);
-      UNBLOCK_INPUT;
     }
 
   UNGCPRO;
@@ -6755,37 +6719,7 @@ lookup_rgb_color (f, r, g, b)
   unsigned hash = CT_HASH_RGB (r, g, b);
   int i = hash % CT_SIZE;
   struct ct_color *p;
-  struct x_display_info *dpyinfo;
 
-  /* Handle TrueColor visuals specially, which improves performance by
-     two orders of magnitude.  Freeing colors on TrueColor visuals is
-     a nop, and pixel colors specify RGB values directly.  See also
-     the Xlib spec, chapter 3.1.  */
-  dpyinfo = FRAME_X_DISPLAY_INFO (f);
-  if (dpyinfo->red_bits > 0)
-    {
-      unsigned long pr, pg, pb;
-
-      /* Apply gamma-correction like normal color allocation does.  */
-      if (f->gamma)
-	{
-	  XColor color;
-	  color.red = r, color.green = g, color.blue = b;
-	  gamma_correct (f, &color);
-	  r = color.red, g = color.green, b = color.blue;
-	}
-
-      /* Scale down RGB values to the visual's bits per RGB, and shift
-	 them to the right position in the pixel color.  Note that the
-	 original RGB values are 16-bit values, as usual in X.  */
-      pr = (r >> (16 - dpyinfo->red_bits))   << dpyinfo->red_offset;
-      pg = (g >> (16 - dpyinfo->green_bits)) << dpyinfo->green_offset;
-      pb = (b >> (16 - dpyinfo->blue_bits))  << dpyinfo->blue_offset;
-
-      /* Assemble the pixel color.  */
-      return pr | pg | pb;
-    }
-  
   for (p = ct_table[i]; p; p = p->next)
     if (p->r == r && p->g == g && p->b == b)
       break;
@@ -9936,7 +9870,7 @@ x_create_tip_frame (dpyinfo, parms, text)
       {
 	tem = Fquery_fontset (font, Qnil);
 	if (STRINGP (tem))
-	  font = x_new_fontset (f, SDATA (tem));
+	  font = x_new_fontset (f, tem);
 	else
 	  font = x_new_font (f, SDATA (font));
       }
@@ -10937,19 +10871,6 @@ meaning don't clear the cache.  */);
 #endif /* USE_MOTIF */
 #endif /* USE_X_TOOLKIT */
 
-#ifdef USE_GTK
-  Fprovide (intern ("gtk"), Qnil);
-
-  DEFVAR_LISP ("gtk-version-string", &Vgtk_version_string,
-               doc: /* Version info for GTK+.  */);
-  {
-    char gtk_version[40];
-    g_snprintf (gtk_version, sizeof (gtk_version), "%u.%u.%u",
-                GTK_MAJOR_VERSION, GTK_MINOR_VERSION, GTK_MICRO_VERSION);
-    Vgtk_version_string = build_string (gtk_version);
-  }
-#endif /* USE_GTK */
-
   /* X window properties.  */
   defsubr (&Sx_change_window_property);
   defsubr (&Sx_delete_window_property);
@@ -10992,6 +10913,7 @@ meaning don't clear the cache.  */);
   find_ccl_program_func = x_find_ccl_program;
   query_font_func = x_query_font;
   set_frame_fontset_func = x_set_font;
+  get_font_repertory_func = x_get_font_repertory;
   check_window_system_func = check_x;
 
   /* Images.  */
@@ -11104,6 +11026,3 @@ init_xfns ()
 }
 
 #endif /* HAVE_X_WINDOWS */
-
-/* arch-tag: 55040d02-5485-4d58-8b22-95a7a05f3288
-   (do not change this comment) */

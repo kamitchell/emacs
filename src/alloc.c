@@ -52,7 +52,7 @@ Boston, MA 02111-1307, USA.  */
 #include "keyboard.h"
 #include "frame.h"
 #include "blockinput.h"
-#include "charset.h"
+#include "character.h"
 #include "syssignal.h"
 #include <setjmp.h>
 
@@ -552,7 +552,7 @@ xrealloc (block, size)
 }
 
 
-/* Like free but block interrupt input.  */
+/* Like free but block interrupt input..  */
 
 void
 xfree (block)
@@ -711,7 +711,7 @@ struct ablocks
 #define ABLOCKS_BASE(abase) (abase)
 #else
 #define ABLOCKS_BASE(abase) \
-  (1 & (long) ABLOCKS_BUSY (abase) ? abase : ((void**)abase)[-1])
+  (1 & (int) ABLOCKS_BUSY (abase) ? abase : ((void**)abase)[-1])
 #endif
 
 /* The list of free ablock.   */
@@ -738,8 +738,7 @@ lisp_align_malloc (nbytes, type)
 
   if (!free_ablock)
     {
-      int i;
-      EMACS_INT aligned; /* int gets warning casting to 64-bit pointer.  */
+      int i, aligned;
 
 #ifdef DOUG_LEA_MALLOC
       /* Prevent mmap'ing the chunk.  Lisp data may not be mmap'ed
@@ -792,17 +791,17 @@ lisp_align_malloc (nbytes, type)
 	  abase->blocks[i].x.next_free = free_ablock;
 	  free_ablock = &abase->blocks[i];
 	}
-      ABLOCKS_BUSY (abase) = (struct ablocks *) (long) aligned;
+      ABLOCKS_BUSY (abase) = (struct ablocks *) aligned;
 
       eassert (0 == ((EMACS_UINT)abase) % BLOCK_ALIGN);
       eassert (ABLOCK_ABASE (&abase->blocks[3]) == abase); /* 3 is arbitrary */
       eassert (ABLOCK_ABASE (&abase->blocks[0]) == abase);
       eassert (ABLOCKS_BASE (abase) == base);
-      eassert (aligned == (long) ABLOCKS_BUSY (abase));
+      eassert (aligned == (int)ABLOCKS_BUSY (abase));
     }
 
   abase = ABLOCK_ABASE (free_ablock);
-  ABLOCKS_BUSY (abase) = (struct ablocks *) (2 + (long) ABLOCKS_BUSY (abase));
+  ABLOCKS_BUSY (abase) = (struct ablocks *) (2 + (int) ABLOCKS_BUSY (abase));
   val = free_ablock;
   free_ablock = free_ablock->x.next_free;
 
@@ -834,11 +833,11 @@ lisp_align_free (block)
   ablock->x.next_free = free_ablock;
   free_ablock = ablock;
   /* Update busy count.  */
-  ABLOCKS_BUSY (abase) = (struct ablocks *) (-2 + (long) ABLOCKS_BUSY (abase));
+  ABLOCKS_BUSY (abase) = (struct ablocks *) (-2 + (int) ABLOCKS_BUSY (abase));
   
-  if (2 > (long) ABLOCKS_BUSY (abase))
+  if (2 > (int) ABLOCKS_BUSY (abase))
     { /* All the blocks are free.  */
-      int i = 0, aligned = (long) ABLOCKS_BUSY (abase);
+      int i = 0, aligned = (int) ABLOCKS_BUSY (abase);
       struct ablock **tem = &free_ablock;
       struct ablock *atop = &abase->blocks[aligned ? ABLOCKS_SIZE : ABLOCKS_SIZE - 1];
 
@@ -1899,7 +1898,7 @@ Both LENGTH and INIT must be numbers.  */)
   CHECK_NUMBER (init);
 
   c = XINT (init);
-  if (SINGLE_BYTE_CHAR_P (c))
+  if (ASCII_CHAR_P (c))
     {
       nbytes = XINT (length);
       val = make_uninit_string (nbytes);
@@ -2621,49 +2620,6 @@ See also the function `vector'.  */)
     p->contents[index] = init;
 
   XSETVECTOR (vector, p);
-  return vector;
-}
-
-
-DEFUN ("make-char-table", Fmake_char_table, Smake_char_table, 1, 2, 0,
-       doc: /* Return a newly created char-table, with purpose PURPOSE.
-Each element is initialized to INIT, which defaults to nil.
-PURPOSE should be a symbol which has a `char-table-extra-slots' property.
-The property's value should be an integer between 0 and 10.  */)
-     (purpose, init)
-     register Lisp_Object purpose, init;
-{
-  Lisp_Object vector;
-  Lisp_Object n;
-  CHECK_SYMBOL (purpose);
-  n = Fget (purpose, Qchar_table_extra_slots);
-  CHECK_NUMBER (n);
-  if (XINT (n) < 0 || XINT (n) > 10)
-    args_out_of_range (n, Qnil);
-  /* Add 2 to the size for the defalt and parent slots.  */
-  vector = Fmake_vector (make_number (CHAR_TABLE_STANDARD_SLOTS + XINT (n)),
-			 init);
-  XCHAR_TABLE (vector)->top = Qt;
-  XCHAR_TABLE (vector)->parent = Qnil;
-  XCHAR_TABLE (vector)->purpose = purpose;
-  XSETCHAR_TABLE (vector, XCHAR_TABLE (vector));
-  return vector;
-}
-
-
-/* Return a newly created sub char table with default value DEFALT.
-   Since a sub char table does not appear as a top level Emacs Lisp
-   object, we don't need a Lisp interface to make it.  */
-
-Lisp_Object
-make_sub_char_table (defalt)
-     Lisp_Object defalt;
-{
-  Lisp_Object vector
-    = Fmake_vector (make_number (SUB_CHAR_TABLE_STANDARD_SLOTS), Qnil);
-  XCHAR_TABLE (vector)->top = Qnil;
-  XCHAR_TABLE (vector)->defalt = defalt;
-  XSETCHAR_TABLE (vector, XCHAR_TABLE (vector));
   return vector;
 }
 
@@ -5775,7 +5731,6 @@ The time is in seconds as a floating point value.  */);
   defsubr (&Smake_byte_code);
   defsubr (&Smake_list);
   defsubr (&Smake_vector);
-  defsubr (&Smake_char_table);
   defsubr (&Smake_string);
   defsubr (&Smake_bool_vector);
   defsubr (&Smake_symbol);
@@ -5789,6 +5744,3 @@ The time is in seconds as a floating point value.  */);
   defsubr (&Sgc_status);
 #endif
 }
-
-/* arch-tag: 6695ca10-e3c5-4c2c-8bc3-ed26a7dda857
-   (do not change this comment) */

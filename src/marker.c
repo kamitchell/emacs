@@ -22,7 +22,7 @@ Boston, MA 02111-1307, USA.  */
 #include <config.h>
 #include "lisp.h"
 #include "buffer.h"
-#include "charset.h"
+#include "character.h"
 
 /* Record one cached position found recently by
    buf_charpos_to_bytepos or buf_bytepos_to_charpos.  */
@@ -921,6 +921,3 @@ syms_of_marker ()
 	       doc: /* Non-nil enables debugging checks in byte/char position conversions.  */);
   byte_debug_flag = 0;
 }
-
-/* arch-tag: 50aa418f-cdd0-4838-b64b-94aa4b2a3b74
-   (do not change this comment) */

@@ -55,7 +55,7 @@ Boston, MA 02111-1307, USA.  */
 #include "dispextern.h"
 #include "dosfns.h"
 #include "termopts.h"
-#include "charset.h"
+#include "character.h"
 #include "coding.h"
 #include "disptab.h"
 #include "frame.h"
@@ -64,7 +64,6 @@ Boston, MA 02111-1307, USA.  */
 #include "commands.h"
 #include "blockinput.h"
 #include "keyboard.h"
-#include "intervals.h"
 #include <go32.h>
 #include <pc.h>
 #include <ctype.h>
@@ -1436,7 +1435,7 @@ IT_note_mode_line_highlight (struct window *w, int x, int mode_line_p)
       /* Find the glyph under X.  */
       glyph = (row->glyphs[TEXT_AREA]
 	       + x
-	       /* in case someone implements scroll bars some day... */
+	       /* Does MS-DOG really support scroll-bars??  ++KFS */
 	       - WINDOW_LEFT_SCROLL_BAR_AREA_WIDTH (w));
       end = glyph + row->used[TEXT_AREA];
       if (glyph < end
@@ -3797,15 +3796,15 @@ XMenuActivate (Display *foo, XMenu *menu, int *pane, int *selidx,
   screensize = screen_size * 2;
   faces[0]
     = lookup_derived_face (sf, intern ("msdos-menu-passive-face"),
-			   0, DEFAULT_FACE_ID);
+			   DEFAULT_FACE_ID);
   faces[1]
     = lookup_derived_face (sf, intern ("msdos-menu-active-face"),
-			   0, DEFAULT_FACE_ID);
+			   DEFAULT_FACE_ID);
   selectface = intern ("msdos-menu-select-face");
   faces[2] = lookup_derived_face (sf, selectface,
-				  0, faces[0]);
+				  faces[0]);
   faces[3] = lookup_derived_face (sf, selectface,
-				  0, faces[1]);
+				  faces[1]);
 
   /* Make sure the menu title is always displayed with
      `msdos-menu-active-face', no matter where the mouse pointer is.  */
@@ -5298,6 +5297,3 @@ nil means don't delete them until `list-processes' is run.  */);
 }
 
 #endif /* MSDOS */
-
-/* arch-tag: db404e92-52a5-475f-9eb2-1cb78dd05f30
-   (do not change this comment) */

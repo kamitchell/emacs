@@ -895,17 +895,7 @@ w32_per_char_metric (font, char2b, font_type)
   BOOL retval;
 
   xassert (font && char2b);
-
-  /* TODO: This function is currently called through the RIF, and in
-     some cases font_type is UNKNOWN_FONT. We currently allow the
-     cached metrics to be used, which seems to work, but in cases
-     where font_type is UNKNOWN_FONT, we probably haven't encoded
-     char2b appropriately. All callers need checking to see what they
-     are passing.  This is most likely to affect variable width fonts
-     outside the Latin-1 range, particularly in languages like Thai
-     that rely on rbearing and lbearing to provide composition. I
-     don't think that is working currently anyway, but we don't seem
-     to have anyone testing such languages on Windows.  */
+  xassert (font_type != UNKNOWN_FONT);
 
   /* Handle the common cases quickly.  */
   if (!font->bdf && font->per_char == NULL)
@@ -913,8 +903,6 @@ w32_per_char_metric (font, char2b, font_type)
     return &font->max_bounds;
   else if (!font->bdf && *char2b < 128)
     return &font->per_char[*char2b];
-
-  xassert (font_type != UNKNOWN_FONT);
 
   pcm = &font->scratch;
 
@@ -1008,7 +996,7 @@ w32_encode_char (c, char2b, font_info, two_byte_p)
      struct font_info *font_info;
      int * two_byte_p;
 {
-  int charset = CHAR_CHARSET (c);
+  struct charset *charset = CHAR_CHARSET (c);
   int codepage;
   int unicode_p = 0;
   int internal_two_byte_p = 0;
@@ -1027,18 +1015,18 @@ w32_encode_char (c, char2b, font_info, two_byte_p)
 
       if (CHARSET_DIMENSION (charset) == 1)
 	{
-	  ccl->reg[0] = charset;
+	  ccl->reg[0] = CHARSET_ID (charset);
 	  ccl->reg[1] = XCHAR2B_BYTE2 (char2b);
 	  ccl->reg[2] = -1;
 	}
       else
 	{
-	  ccl->reg[0] = charset;
+	  ccl->reg[0] = CHARSET_ID (charset);
 	  ccl->reg[1] = XCHAR2B_BYTE1 (char2b);
 	  ccl->reg[2] = XCHAR2B_BYTE2 (char2b);
 	}
 
-      ccl_driver (ccl, NULL, NULL, 0, 0, NULL);
+      ccl_driver (ccl, NULL, NULL, 0, 0, Qnil);
 
       /* We assume that MSBs are appropriately set/reset by CCL
 	 program.  */
@@ -1062,11 +1050,10 @@ w32_encode_char (c, char2b, font_info, two_byte_p)
 	STORE_XCHAR2B (char2b, XCHAR2B_BYTE1 (char2b), XCHAR2B_BYTE2 (char2b) | 0x80);
       else if (enc == 4)
         {
-          int sjis1, sjis2;
+          int code = (int) char2b;
 
-          ENCODE_SJIS (XCHAR2B_BYTE1 (char2b), XCHAR2B_BYTE2 (char2b),
-                       sjis1, sjis2);
-          STORE_XCHAR2B (char2b, sjis1, sjis2);
+	  JIS_TO_SJIS (code);
+          STORE_XCHAR2B (char2b, (code >> 8), (code & 0xFF));
         }
     }
   codepage = font_info->codepage;
@@ -1074,8 +1061,7 @@ w32_encode_char (c, char2b, font_info, two_byte_p)
   /* If charset is not ASCII or Latin-1, may need to move it into
      Unicode space.  */
   if ( font && !font->bdf && w32_use_unicode_for_codepage (codepage)
-       && charset != CHARSET_ASCII && charset != charset_latin_iso8859_1
-       && charset != CHARSET_8_BIT_CONTROL && charset != CHARSET_8_BIT_GRAPHIC)
+       && c >= 0x100)
     {
       char temp[3];
       temp[0] = XCHAR2B_BYTE1 (char2b);
@@ -4790,7 +4776,7 @@ w32_read_socket (sd, bufp, numchars, expected)
 	  if (msg.msg.message == msh_mousewheel)
 	    {
 	      /* Forward MSH_MOUSEWHEEL as WM_MOUSEWHEEL.  */
-	      msg.msg.message = WM_MOUSEWHEEL;
+	      msg.msg.message == WM_MOUSEWHEEL;
 	      prepend_msg (&msg);
 	    }
 	  break;
@@ -5243,7 +5229,7 @@ x_new_font (f, fontname)
      register char *fontname;
 {
   struct font_info *fontp
-    = FS_LOAD_FONT (f, 0, fontname, -1);
+    = FS_LOAD_FONT (f, fontname);
 
   if (!fontp)
     return Qnil;
@@ -6559,6 +6545,3 @@ the cursor have no effect.  */);
   staticpro (&last_mouse_motion_frame);
   last_mouse_motion_frame = Qnil;
 }
-
-/* arch-tag: 5fa70624-ab86-499c-8a85-473958ee4646
-   (do not change this comment) */

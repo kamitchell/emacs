@@ -25,8 +25,6 @@
 ;;; Commentary:
 
 ;; Welsh input following the Yudit map by david@sheetmusic.org.uk.
-;; This is set up to produce utf-8.  A Latin-8 version of most of it
-;; is commented-out at the end.
 
 ;;; Code:
 
@@ -34,7 +32,7 @@
 
 (quail-define-package
  "welsh" "Welsh" "$,1!4(B" t
- "Welsh postfix input method, using Unicode"
+ "Welsh postfix input method"
  nil t nil nil nil nil nil nil nil nil t)
 
 (quail-define-rules
@@ -202,5 +200,4 @@
 ;;  ("w\"" ?,A>(B))
 
 
-;;; arch-tag: aeef0eae-0a50-4606-9120-020d59d5e208
 ;;; welsh.el ends here

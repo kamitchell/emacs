@@ -25,7 +25,7 @@ Boston, MA 02111-1307, USA.  */
 #include <stdio.h>
 #include "lisp.h"
 #include "puresize.h"
-#include "charset.h"
+#include "character.h"
 #include "buffer.h"
 #include "keyboard.h"
 #include "frame.h"
@@ -447,7 +447,7 @@ DEFUN ("char-or-string-p", Fchar_or_string_p, Schar_or_string_p, 1, 1, 0,
      (object)
      register Lisp_Object object;
 {
-  if (INTEGERP (object) || STRINGP (object))
+  if (CHARACTERP (object) || STRINGP (object))
     return Qt;
   return Qnil;
 }
@@ -1449,7 +1449,6 @@ The function `default-value' gets the default value and `set-default' sets it.  
   register Lisp_Object tem, valcontents, newval;
 
   CHECK_SYMBOL (variable);
-  variable = indirect_variable (variable);
 
   valcontents = SYMBOL_VALUE (variable);
   if (EQ (variable, Qnil) || EQ (variable, Qt) || KBOARD_OBJFWDP (valcontents))
@@ -1503,7 +1502,6 @@ Instead, use `add-hook' and specify t for the LOCAL argument.  */)
   register Lisp_Object tem, valcontents;
 
   CHECK_SYMBOL (variable);
-  variable = indirect_variable (variable);
 
   valcontents = SYMBOL_VALUE (variable);
   if (EQ (variable, Qnil) || EQ (variable, Qt) || KBOARD_OBJFWDP (valcontents))
@@ -1583,7 +1581,6 @@ From now on the default value will apply in this buffer.  Return VARIABLE.  */)
   register Lisp_Object tem, valcontents;
 
   CHECK_SYMBOL (variable);
-  variable = indirect_variable (variable);
 
   valcontents = SYMBOL_VALUE (variable);
 
@@ -1648,7 +1645,6 @@ See `modify-frame-parameters' for how to set frame parameters.  */)
   register Lisp_Object tem, valcontents, newval;
 
   CHECK_SYMBOL (variable);
-  variable = indirect_variable (variable);
 
   valcontents = SYMBOL_VALUE (variable);
   if (EQ (variable, Qnil) || EQ (variable, Qt) || KBOARD_OBJFWDP (valcontents)
@@ -1698,7 +1694,6 @@ BUFFER defaults to the current buffer.  */)
     }
 
   CHECK_SYMBOL (variable);
-  variable = indirect_variable (variable);
 
   valcontents = SYMBOL_VALUE (variable);
   if (BUFFER_LOCAL_VALUEP (valcontents)
@@ -1743,7 +1738,6 @@ BUFFER defaults to the current buffer.  */)
     }
 
   CHECK_SYMBOL (variable);
-  variable = indirect_variable (variable);
 
   valcontents = SYMBOL_VALUE (variable);
 
@@ -1861,77 +1855,8 @@ or a byte-code object.  IDX starts at 0.  */)
     }
   else if (CHAR_TABLE_P (array))
     {
-      Lisp_Object val;
-
-      val = Qnil;
-
-      if (idxval < 0)
-	args_out_of_range (array, idx);
-      if (idxval < CHAR_TABLE_ORDINARY_SLOTS)
-	{
-	  /* For ASCII and 8-bit European characters, the element is
-             stored in the top table.  */
-	  val = XCHAR_TABLE (array)->contents[idxval];
-	  if (NILP (val))
-	    val = XCHAR_TABLE (array)->defalt;
-	  while (NILP (val))	/* Follow parents until we find some value.  */
-	    {
-	      array = XCHAR_TABLE (array)->parent;
-	      if (NILP (array))
-		return Qnil;
-	      val = XCHAR_TABLE (array)->contents[idxval];
-	      if (NILP (val))
-		val = XCHAR_TABLE (array)->defalt;
-	    }
-	  return val;
-	}
-      else
-	{
-	  int code[4], i;
-	  Lisp_Object sub_table;
-
-	  SPLIT_CHAR (idxval, code[0], code[1], code[2]);
-	  if (code[1] < 32) code[1] = -1;
-	  else if (code[2] < 32) code[2] = -1;
-
-	  /* Here, the possible range of CODE[0] (== charset ID) is
-	    128..MAX_CHARSET.  Since the top level char table contains
-	    data for multibyte characters after 256th element, we must
-	    increment CODE[0] by 128 to get a correct index.  */
-	  code[0] += 128;
-	  code[3] = -1;		/* anchor */
-
-	try_parent_char_table:
-	  sub_table = array;
-	  for (i = 0; code[i] >= 0; i++)
-	    {
-	      val = XCHAR_TABLE (sub_table)->contents[code[i]];
-	      if (SUB_CHAR_TABLE_P (val))
-		sub_table = val;
-	      else
-		{
-		  if (NILP (val))
-		    val = XCHAR_TABLE (sub_table)->defalt;
-		  if (NILP (val))
-		    {
-		      array = XCHAR_TABLE (array)->parent;
-		      if (!NILP (array))
-			goto try_parent_char_table;
-		    }
-		  return val;
-		}
-	    }
-	  /* Here, VAL is a sub char table.  We try the default value
-             and parent.  */
-	  val = XCHAR_TABLE (val)->defalt;
-	  if (NILP (val))
-	    {
-	      array = XCHAR_TABLE (array)->parent;
-	      if (!NILP (array))
-		goto try_parent_char_table;
-	    }
-	  return val;
-	}
+      CHECK_CHARACTER (idx);
+      return CHAR_TABLE_REF (array, idxval);
     }
   else
     {
@@ -1994,44 +1919,8 @@ bool-vector.  IDX starts at 0.  */)
     }
   else if (CHAR_TABLE_P (array))
     {
-      if (idxval < 0)
-	args_out_of_range (array, idx);
-      if (idxval < CHAR_TABLE_ORDINARY_SLOTS)
-	XCHAR_TABLE (array)->contents[idxval] = newelt;
-      else
-	{
-	  int code[4], i;
-	  Lisp_Object val;
-
-	  SPLIT_CHAR (idxval, code[0], code[1], code[2]);
-	  if (code[1] < 32) code[1] = -1;
-	  else if (code[2] < 32) code[2] = -1;
-
-	  /* See the comment of the corresponding part in Faref.  */
-	  code[0] += 128;
-	  code[3] = -1;		/* anchor */
-	  for (i = 0; code[i + 1] >= 0; i++)
-	    {
-	      val = XCHAR_TABLE (array)->contents[code[i]];
-	      if (SUB_CHAR_TABLE_P (val))
-		array = val;
-	      else
-		{
-		  Lisp_Object temp;
-
-		  /* VAL is a leaf.  Create a sub char table with the
-		     default value VAL or XCHAR_TABLE (array)->defalt
-		     and look into it.  */
-
-		  temp = make_sub_char_table (NILP (val)
-					      ? XCHAR_TABLE (array)->defalt
-					      : val);
-		  XCHAR_TABLE (array)->contents[code[i]] = temp;
-		  array = temp;
-		}
-	    }
-	  XCHAR_TABLE (array)->contents[code[i]] = newelt;
-	}
+      CHECK_CHARACTER (idx);
+      CHAR_TABLE_SET (array, idxval, newelt);
     }
   else if (STRING_MULTIBYTE (array))
     {
@@ -2077,7 +1966,7 @@ bool-vector.  IDX starts at 0.  */)
 	args_out_of_range (array, idx);
       CHECK_NUMBER (newelt);
 
-      if (XINT (newelt) < 0 || SINGLE_BYTE_CHAR_P (XINT (newelt)))
+      if (XINT (newelt) < 0 || ASCII_CHAR_P (XINT (newelt)))
 	SSET (array, idxval, XINT (newelt));
       else
 	{
@@ -3264,6 +3153,3 @@ init_data ()
   signal (SIGEMT, arith_error);
 #endif /* uts */
 }
-
-/* arch-tag: 25879798-b84d-479a-9c89-7d148e2109f7
-   (do not change this comment) */

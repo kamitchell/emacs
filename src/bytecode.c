@@ -37,7 +37,7 @@ by Hallvard:
 #include <config.h>
 #include "lisp.h"
 #include "buffer.h"
-#include "charset.h"
+#include "character.h"
 #include "syntax.h"
 #include "window.h"
 
@@ -1437,10 +1437,17 @@ If the third argument is incorrect, Emacs may crash.  */)
 	  break;
 
 	case Bchar_syntax:
-	  BEFORE_POTENTIAL_GC ();
-	  CHECK_NUMBER (TOP);
-	  AFTER_POTENTIAL_GC ();
-	  XSETFASTINT (TOP, syntax_code_spec[(int) SYNTAX (XINT (TOP))]);
+	  {
+	    int c;
+
+	    BEFORE_POTENTIAL_GC ();
+	    CHECK_CHARACTER (TOP);
+	    AFTER_POTENTIAL_GC ();
+	    c = XFASTINT (TOP);
+	    if (NILP (current_buffer->enable_multibyte_characters))
+	      MAKE_CHAR_MULTIBYTE (c);
+	    XSETFASTINT (TOP, syntax_code_spec[(int) SYNTAX (c)]);
+	  }
 	  break;
 
 	case Bbuffer_substring:
@@ -1775,6 +1782,3 @@ integer, it is incremented each time that symbol's function is called.  */);
   }
 #endif
 }
-
-/* arch-tag: b9803b6f-1ed6-4190-8adf-33fd3a9d10e9
-   (do not change this comment) */
