@@ -297,8 +297,8 @@ Some generic modes are defined in `generic-x.el'."
 	(when (consp start)
 	  (setq end (or (cdr start) end))
 	  (setq start (car start)))
-	(when (char-valid-p start) (setq start (char-to-string start)))
-	(when (char-valid-p end)   (setq end (char-to-string end)))
+	(when (characterp start) (setq start (char-to-string start)))
+	(when (characterp end)   (setq end (char-to-string end)))
 
 	;; Setup the vars for `comment-region'
 	(if comment-start
@@ -417,5 +417,4 @@ The regexp is highlighted with FACE."
 
 (provide 'generic)
 
-;;; arch-tag: 239c1fc4-1303-48d9-9ac0-657d655669ea
 ;;; generic.el ends here
