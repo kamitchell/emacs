@@ -602,13 +602,7 @@ struct coding_system
    && XFASTINT (Vw32_system_coding_system) != 0				   \
    ? code_convert_string_norecord (str, Vw32_system_coding_system, 0)	   \
    : str)
-
-#else /* WINDOWSNT */
-
-#define ENCODE_SYSTEM(str) string_make_unibyte(str)
-#define DECODE_SYSTEM(name) name
-
-#endif /* !WINDOWSNT */
+#endif
 
 /* Extern declarations.  */
 extern int decode_coding P_ ((struct coding_system *, unsigned char *,
@@ -626,6 +620,9 @@ extern void coding_restore_composition P_ ((struct coding_system *,
 					    Lisp_Object));
 extern int code_convert_region P_ ((int, int, int, int, struct coding_system *,
 				    int, int));
+extern Lisp_Object run_pre_post_conversion_on_str P_ ((Lisp_Object,
+						       struct coding_system *,
+						       int));
 extern int decoding_buffer_size P_ ((struct coding_system *, int));
 extern int encoding_buffer_size P_ ((struct coding_system *, int));
 extern void detect_coding P_ ((struct coding_system *, unsigned char *, int));
