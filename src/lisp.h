@@ -76,7 +76,7 @@ extern void die P_((const char *, const char *, int));
 #endif
 
 /* Used for making sure that Emacs is compilable in all
-   configurations.  */
+   conigurations.  */
 
 #ifdef USE_LISP_UNION_TYPE
 #undef NO_UNION_TYPE
@@ -124,12 +124,13 @@ enum Lisp_Type
     Lisp_Cons,
 
     Lisp_Float,
+    Lisp_Bignum,
 
     /* This is not a type code.  It is for range checking.  */
     Lisp_Type_Limit
   };
 
-/* This is the set of data types that share a common structure.
+/* This is the set of datatypes that share a common structure.
    The first member of the structure is a type code from this set.
    The enum values are arbitrary, but we'll use large numbers to make it
    more likely that we'll spot the error if a random word in memory is
@@ -248,16 +249,6 @@ Lisp_Object;
 
 #endif /* WORDS_BIG_ENDIAN */
 
-#ifdef __GNUC__
-static __inline__ Lisp_Object
-LISP_MAKE_RVALUE (Lisp_Object o)
-{
-    return o;
-}
-#else
-#define LISP_MAKE_RVALUE(o) (o) /* XXX - keeps arg as rvalue.  */
-#endif
-
 #endif /* NO_UNION_TYPE */
 
 
@@ -265,7 +256,6 @@ LISP_MAKE_RVALUE (Lisp_Object o)
 
 #ifdef NO_UNION_TYPE
 #define Lisp_Object EMACS_INT
-#define LISP_MAKE_RVALUE(o) (0+(o))
 #endif /* NO_UNION_TYPE */
 
 #ifndef VALMASK
@@ -338,7 +328,7 @@ enum pvec_type
 
 /* One need to override this if there must be high bits set in data space
    (doing the result of the below & ((1 << (GCTYPE + 1)) - 1) would work
-    on all machines, but would penalize machines which don't need it)
+    on all machines, but would penalise machines which don't need it)
  */
 #ifndef XTYPE
 #define XTYPE(a) ((enum Lisp_Type) ((a) >> VALBITS))
@@ -371,7 +361,7 @@ enum pvec_type
 #ifndef XPNTR
 #ifdef HAVE_SHM
 /* In this representation, data is found in two widely separated segments.  */
-extern size_t pure_size;
+extern int pure_size;
 #define XPNTR(a) \
   (XUINT (a) | (XUINT (a) > pure_size ? DATA_SEG_BITS : PURE_SEG_BITS))
 #else /* not HAVE_SHM */
@@ -395,7 +385,7 @@ extern size_t pure_size;
 
 /* Convert a C integer into a Lisp_Object integer.  */
 
-#define make_number(N)		\
+#define make_fixnum(N)		\
   ((((EMACS_INT) (N)) & VALMASK) | ((EMACS_INT) Lisp_Int) << VALBITS)
 
 /* During garbage collection, XGCTYPE must be used for extracting types
@@ -459,10 +449,10 @@ extern size_t pure_size;
    (((var).s.val = ((EMACS_INT) (ptr))), ((var).s.type = ((char) (vartype))))
 
 #if __GNUC__ >= 2 && defined (__OPTIMIZE__)
-#define make_number(N) \
+#define make_fixnum(N) \
   (__extension__ ({ Lisp_Object _l; _l.s.val = (N); _l.s.type = Lisp_Int; _l; }))
 #else
-extern Lisp_Object make_number ();
+extern Lisp_Object make_fixnum ();
 #endif
 
 /* During garbage collection, XGCTYPE must be used for extracting types
@@ -479,22 +469,10 @@ extern Lisp_Object make_number ();
 
 #endif /* NO_UNION_TYPE */
 
-/* Largest and smallest representable fixnum values.  These are the C
-   values.  */
-
-#define MOST_NEGATIVE_FIXNUM	- ((EMACS_INT) 1 << (VALBITS - 1))
-#define MOST_POSITIVE_FIXNUM	(((EMACS_INT) 1 << (VALBITS - 1)) - 1)
-
-/* Value is non-zero if C integer I doesn't fit into a Lisp fixnum.  */
-
-#define FIXNUM_OVERFLOW_P(i) \
-  ((EMACS_INT)(i) > MOST_POSITIVE_FIXNUM \
-   || (EMACS_INT) (i) < MOST_NEGATIVE_FIXNUM)
-
 /* Extract a value or address from a Lisp_Object.  */
 
 #define XCONS(a) (eassert (GC_CONSP(a)),(struct Lisp_Cons *) XPNTR(a))
-#define XVECTOR(a) (eassert (GC_VECTORLIKEP(a)),(struct Lisp_Vector *) XPNTR(a))
+#define XVECTOR(a) ((struct Lisp_Vector *) XPNTR(a))
 #define XSTRING(a) (eassert (GC_STRINGP(a)),(struct Lisp_String *) XPNTR(a))
 #define XSYMBOL(a) (eassert (GC_SYMBOLP(a)),(struct Lisp_Symbol *) XPNTR(a))
 #define XFLOAT(a) (eassert (GC_FLOATP(a)),(struct Lisp_Float *) XPNTR(a))
@@ -566,7 +544,7 @@ struct interval
   unsigned int position;	/* Cache of interval's character position.  */
 				/* This field is usually updated
 				   simultaneously with an interval
-				   traversal, there is no guarantee
+				   traversal, there is no guaranty
 				   that it is valid for a random
 				   interval.  */
   struct interval *left;	/* Intervals which precede me.  */
@@ -627,42 +605,13 @@ struct Lisp_Cons
   };
 
 /* Take the car or cdr of something known to be a cons cell.  */
-/* The _AS_LVALUE macros shouldn't be used outside of the minimal set
-   of code that has to know what a cons cell looks like.  Other code not
-   part of the basic lisp implementation should assume that the car and cdr
-   fields are not accessible as lvalues.  (What if we want to switch to
-   a copying collector someday?  Cached cons cell field addresses may be
-   invalidated at arbitrary points.)  */
 #ifdef HIDE_LISP_IMPLEMENTATION
-#define XCAR_AS_LVALUE(c) (XCONS ((c))->car_)
-#define XCDR_AS_LVALUE(c) (XCONS ((c))->cdr_)
+#define XCAR(c) (XCONS ((c))->car_)
+#define XCDR(c) (XCONS ((c))->cdr_)
 #else
-#define XCAR_AS_LVALUE(c) (XCONS ((c))->car)
-#define XCDR_AS_LVALUE(c) (XCONS ((c))->cdr)
+#define XCAR(c) (XCONS ((c))->car)
+#define XCDR(c) (XCONS ((c))->cdr)
 #endif
-
-/* Okay, we're not quite ready to turn this on yet.  A few files still
-   need to be updated and tested.  */
-#undef LISP_MAKE_RVALUE
-#define LISP_MAKE_RVALUE(x) (x)
-
-/* Use these from normal code.  */
-#define XCAR(c)	LISP_MAKE_RVALUE(XCAR_AS_LVALUE(c))
-#define XCDR(c) LISP_MAKE_RVALUE(XCDR_AS_LVALUE(c))
-
-/* Use these to set the fields of a cons cell.
-
-   Note that both arguments may refer to the same object, so 'n'
-   should not be read after 'c' is first modified.  Also, neither
-   argument should be evaluated more than once; side effects are
-   especially common in the second argument.  */
-#define XSETCAR(c,n) (XCAR_AS_LVALUE(c) = (n))
-#define XSETCDR(c,n) (XCDR_AS_LVALUE(c) = (n))
-
-/* For performance: Fast storage of positive integers into the
-   fields of a cons cell.  See above caveats.  */
-#define XSETCARFASTINT(c,n)  XSETFASTINT(XCAR_AS_LVALUE(c),(n))
-#define XSETCDRFASTINT(c,n)  XSETFASTINT(XCDR_AS_LVALUE(c),(n))
 
 /* Take the car or cdr of something whose type is not known.  */
 #define CAR(c)					\
@@ -770,7 +719,7 @@ struct Lisp_Vector
    ? (!NILP (XCHAR_TABLE (CT)->contents[IDX])		\
       ? XCHAR_TABLE (CT)->contents[IDX]			\
       : XCHAR_TABLE (CT)->defalt)			\
-   : Faref (CT, make_number (IDX)))
+   : Faref (CT, make_fixnum (IDX)))
 
 /* Almost equivalent to Faref (CT, IDX) with optimization for ASCII
    and 8-bit Europeans characters.  However, if the result is nil,
@@ -840,6 +789,18 @@ struct Lisp_Bool_Vector
     unsigned char data[1];
   };
 
+/* In a symbol, the markbit of the plist is used as the gc mark bit */
+
+struct Lisp_Symbol
+  {
+    struct Lisp_String *name;
+    Lisp_Object value;
+    Lisp_Object function;
+    Lisp_Object plist;
+    Lisp_Object obarray;
+    struct Lisp_Symbol *next;	/* -> next symbol in this obarray bucket */
+  };
+
 /* This structure describes a built-in function.
    It is generated by the DEFUN macro only.
    defsubr makes it into a Lisp object.
@@ -860,88 +821,65 @@ struct Lisp_Subr
 
 
 /***********************************************************************
-			       Symbols
+			       Bignums
  ***********************************************************************/
 
-/* Interned state of a symbol.  */
+#ifdef HAVE_LIBGMP
 
-enum symbol_interned
+#include <gmp.h>
+
+enum bignum_type
+  {
+    BIG_INTEGER,
+    BIG_FLOAT,			/* Not yet */
+    BIG_RATIONAL,		/* Not yet */
+    BIG_DEAD
+  };
+
+struct Lisp_Bignum
 {
-  SYMBOL_UNINTERNED = 0,
-  SYMBOL_INTERNED = 1,
-  SYMBOL_INTERNED_IN_INITIAL_OBARRAY = 2
-};
+  enum bignum_type type : 8;
 
-/* In a symbol, the markbit of the plist is used as the gc mark bit */
-
-struct Lisp_Symbol
-{
-  /* Non-zero means symbol serves as a variable alias.  The symbol
-     holding the real value is found in the value slot.  */
-  unsigned indirect_variable : 1;
-
-  /* Non-zero means symbol is constant, i.e. changing its value
-     should signal an error.  */
-  unsigned constant : 1;
-
-  /* Interned state of the symbol.  This is an enumerator from
-     enum symbol_interned.  */
-  unsigned interned : 2;
-
-  /* The symbol's name.  This should become a Lisp_Object
-     some day; there's no need for the Lisp_String pointer nowadays.  */
-  struct Lisp_String *name;
-
-  /* Value of the symbol or Qunbound if unbound.  If this symbol is a
-     defvaralias, `value' contains the symbol for which it is an
-     alias.  Use the SYMBOL_VALUE and SET_SYMBOL_VALUE macros to get
-     and set a symbol's value, to take defvaralias into account.  */
-  Lisp_Object value;
-
-  /* Function value of the symbol or Qunbound if not fcoundp.  */
-  Lisp_Object function;
-
-  /* The symbol's property list.  */
-  Lisp_Object plist;
+  /* 1 = marked during GC.  */
+  unsigned marked : 1;
+  
+  union
+  {
+    /* Multi-precision integer if type is BIG_INTEGER.  */
+    mpz_t i;
     
-  /* Next symbol in obarray bucket, if the symbol is interned.  */
-  struct Lisp_Symbol *next;
+    /* Multi-precision float if type is BIG_FLOAT.  */
+    mpf_t f;
+    
+    /* Multi-precision rational number if type is BIG_RATIONAL.  */
+    mpq_t r;
+
+    /* Next in list of free Lisp_Bignum structures.  Free bignums have
+       type BIG_DEAD.  */
+    struct Lisp_Bignum *next_free;
+  } u;
 };
 
-/* Value is non-zero if SYM is an interned symbol.  */
+#define XBIGNUM(obj)		((struct Lisp_Bignum *) XPNTR (obj))
+#define XSETBIGNUM(obj, p)	XSET (obj, Lisp_Bignum, p)
+#define XBIGNUMTYPE(obj)	XBIGNUM (obj)->type
 
-#define SYMBOL_INTERNED_P(sym)  \
-     (XSYMBOL (sym)->interned != SYMBOL_UNINTERNED)
-
-/* Value is non-zero if SYM is interned in initial_obarray.  */
-
-#define SYMBOL_INTERNED_IN_INITIAL_OBARRAY_P(sym) \
-     (XSYMBOL (sym)->interned == SYMBOL_INTERNED_IN_INITIAL_OBARRAY)
-
-/* Value is non-zero if symbol is considered a constant, i.e. its
-   value cannot be changed (there is an exception for keyword symbols,
-   whose value can be set to the keyword symbol itself).  */
-
-#define SYMBOL_CONSTANT_P(sym)   XSYMBOL (sym)->constant
-
-/* Value is the value of SYM, with defvaralias taken into
-   account.  */
-
-#define SYMBOL_VALUE(sym)			\
-   (XSYMBOL (sym)->indirect_variable		\
-    ? XSYMBOL (indirect_variable (sym))->value	\
-    : XSYMBOL (sym)->value)
-
-/* Set SYM's value to VAL, taking defvaralias into account.  */
-
-#define SET_SYMBOL_VALUE(sym, val)				\
-     do {							\
-       if (XSYMBOL (sym)->indirect_variable)			\
-	 XSYMBOL (indirect_variable ((sym)))->value = (val);	\
-       else							\
-	 XSYMBOL (sym)->value = (val);				\
-     } while (0)
+#define BIGNUMP(obj)	(XTYPE (obj) == Lisp_Bignum)
+#define BIGINTP(obj)	(BIGNUMP (obj) && XBIGNUMTYPE (obj) == BIG_INTEGER)
+#define BIGFLOATP(obj)  (BIGNUMP (obj) && XBIGNUMTYPE (obj) == BIG_FLOAT)
+#define BIGRATP(obj)	(BIGNUMP (obj) && XBIGNUMTYPE (obj) == BIG_RATIONAL)
      
+extern Lisp_Object make_bigint P_ ((mpz_t));
+extern Lisp_Object make_bigint_from_string P_ ((char *, int));
+extern Lisp_Object make_bigint_from_int P_ ((EMACS_INT));
+
+/* ??? Check these.  */
+#define MOST_NEGATIVE_FIXNUM	(- (((EMACS_INT) 1 << (VALBITS - 1))) - 1)
+#define MOST_POSITIVE_FIXNUM	((EMACS_INT) 1 << (VALBITS - 1))
+
+#endif /* HAVE_LIBGMP */
+
+
 
 /***********************************************************************
 			     Hash Tables
@@ -1356,13 +1294,13 @@ typedef unsigned char UCHAR;
 #define NILP(x)  (XFASTINT (x) == XFASTINT (Qnil))
 #define GC_NILP(x) GC_EQ (x, Qnil)
 
-#define NUMBERP(x) (INTEGERP (x) || FLOATP (x))
-#define GC_NUMBERP(x) (GC_INTEGERP (x) || GC_FLOATP (x))
-#define NATNUMP(x) (INTEGERP (x) && XINT (x) >= 0)
-#define GC_NATNUMP(x) (GC_INTEGERP (x) && XINT (x) >= 0)
+#define NUMBERP(x) (FIXNUMP (x) || FLOATP (x))
+#define GC_NUMBERP(x) (GC_FIXNUMP (x) || GC_FLOATP (x))
+#define NATNUMP(x) (FIXNUMP (x) && XINT (x) >= 0)
+#define GC_NATNUMP(x) (GC_FIXNUMP (x) && XINT (x) >= 0)
 
-#define INTEGERP(x) (XTYPE ((x)) == Lisp_Int)
-#define GC_INTEGERP(x) (XGCTYPE ((x)) == Lisp_Int)
+#define FIXNUMP(x) (XTYPE ((x)) == Lisp_Int)
+#define GC_FIXNUMP(x) (XGCTYPE ((x)) == Lisp_Int)
 #define SYMBOLP(x) (XTYPE ((x)) == Lisp_Symbol)
 #define GC_SYMBOLP(x) (XGCTYPE ((x)) == Lisp_Symbol)
 #define MISCP(x) (XTYPE ((x)) == Lisp_Misc)
@@ -1484,7 +1422,7 @@ typedef unsigned char UCHAR;
   do { if (!PROCESSP ((x))) x = wrong_type_argument (Qprocessp, (x)); } while (0)
 
 #define CHECK_NUMBER(x, i) \
-  do { if (!INTEGERP ((x))) x = wrong_type_argument (Qintegerp, (x)); } while (0)
+  do { if (!FIXNUMP ((x))) x = wrong_type_argument (Qintegerp, (x)); } while (0)
 
 #define CHECK_NATNUM(x, i) \
   do { if (!NATNUMP (x)) x = wrong_type_argument (Qwholenump, (x)); } while (0)
@@ -1494,7 +1432,7 @@ typedef unsigned char UCHAR;
 
 #define CHECK_NUMBER_COERCE_MARKER(x, i) \
   do { if (MARKERP ((x))) XSETFASTINT (x, marker_position (x)); \
-    else if (!INTEGERP ((x))) x = wrong_type_argument (Qinteger_or_marker_p, (x)); } while (0)
+    else if (!FIXNUMP ((x))) x = wrong_type_argument (Qinteger_or_marker_p, (x)); } while (0)
 
 #define XFLOATINT(n) extract_float((n))
 
@@ -1503,32 +1441,16 @@ typedef unsigned char UCHAR;
     x = wrong_type_argument (Qfloatp, (x)); } while (0)
 
 #define CHECK_NUMBER_OR_FLOAT(x, i)	\
-  do { if (!FLOATP (x) && !INTEGERP (x))	\
+  do { if (!FLOATP (x) && !FIXNUMP (x))	\
     x = wrong_type_argument (Qnumberp, (x)); } while (0)
 
 #define CHECK_NUMBER_OR_FLOAT_COERCE_MARKER(x, i) \
   do { if (MARKERP (x)) XSETFASTINT (x, marker_position (x));	\
-  else if (!INTEGERP (x) && !FLOATP (x))		\
+  else if (!FIXNUMP (x) && !FLOATP (x))		\
     x = wrong_type_argument (Qnumber_or_marker_p, (x)); } while (0)
 
 #define CHECK_OVERLAY(x, i) \
   do { if (!OVERLAYP ((x))) x = wrong_type_argument (Qoverlayp, (x));} while (0)
-
-/* Since we can't assign directly to the CAR or CDR fields of a cons
-   cell, use these when checking that those fields contain numbers.  */
-#define CHECK_NUMBER_CAR(x, i) \
-  do {					\
-    Lisp_Object tmp = XCAR (x);		\
-    CHECK_NUMBER (tmp, (i));		\
-    XSETCAR ((x), tmp);			\
-  } while (0)
-
-#define CHECK_NUMBER_CDR(x, i) \
-  do {					\
-    Lisp_Object tmp = XCDR (x);		\
-    CHECK_NUMBER (tmp, (i));		\
-    XSETCDR ((x), tmp);			\
-  } while (0)
 
 /* Cast pointers to this type to compare them.  Some machines want int.  */
 #ifndef PNTR_COMPARISON_TYPE
@@ -1559,9 +1481,6 @@ typedef unsigned char UCHAR;
 
 #if (!defined (__STDC__) && !defined (PROTOTYPES)) \
     || defined (USE_NONANSI_DEFUN)
-
-#ifdef DOC_STRINGS_IN_COMMENTS
-
 #define DEFUN(lname, fnname, sname, minargs, maxargs, prompt, doc)	\
   Lisp_Object fnname ();						\
   struct Lisp_Subr sname =						\
@@ -1569,29 +1488,7 @@ typedef unsigned char UCHAR;
       fnname, minargs, maxargs, lname, prompt, 0};			\
   Lisp_Object fnname
 
-#else /* not DOC_STRINGS_IN_COMMENTS */
-
-#define DEFUN(lname, fnname, sname, minargs, maxargs, prompt, args)	\
-  Lisp_Object fnname ();						\
-  struct Lisp_Subr sname =						\
-    { PVEC_SUBR | (sizeof (struct Lisp_Subr) / sizeof (EMACS_INT)),	\
-      fnname, minargs, maxargs, lname, prompt, 0};			\
-  Lisp_Object fnname args
-
-#endif /* not DOC_STRINGS_IN_COMMENTS */
-
 #else
-
-#ifdef DOC_STRINGS_IN_COMMENTS
-
-#define DEFUN(lname, fnname, sname, minargs, maxargs, prompt, args)	\
-  Lisp_Object fnname DEFUN_ARGS_ ## maxargs ;				\
-  struct Lisp_Subr sname =						\
-    { PVEC_SUBR | (sizeof (struct Lisp_Subr) / sizeof (EMACS_INT)),	\
-      fnname, minargs, maxargs, lname, prompt, 0};			\
-  Lisp_Object fnname args
-
-#else /* not DOC_STRINGS_IN_COMMENTS */
 
 /* This version of DEFUN declares a function prototype with the right
    arguments, so we can catch errors with maxargs at compile-time.  */
@@ -1601,8 +1498,6 @@ typedef unsigned char UCHAR;
     { PVEC_SUBR | (sizeof (struct Lisp_Subr) / sizeof (EMACS_INT)),	\
       fnname, minargs, maxargs, lname, prompt, 0};			\
   Lisp_Object fnname
-
-#endif /* not DOC_STRINGS_IN_COMMENTS */
 
 /* Note that the weird token-substitution semantics of ANSI C makes
    this work for MANY and UNEVALLED.  */
@@ -1648,21 +1543,6 @@ extern void defvar_kboard P_ ((char *, int));
 /* Macros we use to define forwarded Lisp variables.
    These are used in the syms_of_FILENAME functions.  */
 
-#ifdef DOC_STRINGS_IN_COMMENTS
-
-#define DEFVAR_LISP(lname, vname) defvar_lisp (lname, vname)
-#define DEFVAR_LISP_NOPRO(lname, vname) defvar_lisp_nopro (lname, vname)
-#define DEFVAR_BOOL(lname, vname) defvar_bool (lname, vname)
-#define DEFVAR_INT(lname, vname) defvar_int (lname, vname)
-#define DEFVAR_PER_BUFFER(lname, vname, type)  \
- defvar_per_buffer (lname, vname, type, 0)
-#define DEFVAR_KBOARD(lname, vname) \
- defvar_kboard (lname, \
-		(int)((char *)(&current_kboard->vname) \
-		      - (char *)current_kboard))
-
-#else /* not DOC_STRINGS_IN_COMMENTS  */
-
 #define DEFVAR_LISP(lname, vname, doc) defvar_lisp (lname, vname)
 #define DEFVAR_LISP_NOPRO(lname, vname, doc) defvar_lisp_nopro (lname, vname)
 #define DEFVAR_BOOL(lname, vname, doc) defvar_bool (lname, vname)
@@ -1673,10 +1553,6 @@ extern void defvar_kboard P_ ((char *, int));
  defvar_kboard (lname, \
 		(int)((char *)(&current_kboard->vname) \
 		      - (char *)current_kboard))
-
-#endif /* not DOC_STRINGS_IN_COMMENTS */
-
-
 
 /* Structure for recording Lisp call stack for backtrace purposes.  */
 
@@ -1692,15 +1568,12 @@ extern void defvar_kboard P_ ((char *, int));
       form.
 
    Otherwise, the element is a variable binding.
-   
    If the symbol field is a symbol, it is an ordinary variable binding.
-   
-   Otherwise, it should be a structure (SYMBOL WHERE
-   . CURRENT-BUFFER), which means having bound a local value while
-   CURRENT-BUFFER was active.  If WHERE is nil this means we saw the
-   default value when binding SYMBOL.  WHERE being a buffer or frame
-   means we saw a buffer-local or frame-local value.  Other values of
-   WHERE mean an internal error.  */
+   Otherwise, it should be a structure (SYMBOL BUFFER . BUFFER),
+   which represents having bound BUFFER's local value,
+   or (SYMBOL nil . BUFFER), which represents having bound the default
+   value when BUFFER was current (buffer not having any local binding
+   for SYMBOL).  */
 
 struct specbinding
   {
@@ -2029,8 +1902,6 @@ extern Lisp_Object Qfloatp, Qinteger_or_floatp, Qinteger_or_float_or_marker_p;
 
 extern Lisp_Object Qframep;
 
-extern void circular_list_error P_ ((Lisp_Object));
-
 EXFUN (Feq, 2);
 EXFUN (Fnull, 1);
 EXFUN (Flistp, 1);
@@ -2111,7 +1982,6 @@ EXFUN (Fadd1, 1);
 EXFUN (Fsub1, 1);
 EXFUN (Fmake_variable_buffer_local, 1);
 
-extern Lisp_Object indirect_variable P_ ((Lisp_Object));
 extern Lisp_Object long_to_cons P_ ((unsigned long));
 extern unsigned long cons_to_long P_ ((Lisp_Object));
 extern void args_out_of_range P_ ((Lisp_Object, Lisp_Object));
@@ -2247,8 +2117,9 @@ EXFUN (Fmapcar, 2);
 EXFUN (Fmapconcat, 3);
 EXFUN (Fy_or_n_p, 1);
 extern Lisp_Object do_yes_or_no_p P_ ((Lisp_Object));
+EXFUN (Ffeaturep, 1);
 EXFUN (Frequire, 3);
-EXFUN (Fprovide, 2);
+EXFUN (Fprovide, 1);
 extern Lisp_Object concat2 P_ ((Lisp_Object, Lisp_Object));
 extern Lisp_Object concat3 P_ ((Lisp_Object, Lisp_Object, Lisp_Object));
 extern Lisp_Object nconc2 P_ ((Lisp_Object, Lisp_Object));
@@ -2283,7 +2154,6 @@ extern void init_floatfns P_ ((void));
 extern void syms_of_floatfns P_ ((void));
 
 /* Defined in insdel.c */
-extern Lisp_Object Qinhibit_modification_hooks;
 extern void move_gap P_ ((int));
 extern void move_gap_both P_ ((int, int));
 extern void make_gap P_ ((int));
@@ -2363,6 +2233,7 @@ extern int check_point_in_composition
 	P_ ((struct buffer *, int, struct buffer *, int));
 extern void redisplay_preserve_echo_area P_ ((int));
 extern void mark_window_display_accurate P_ ((Lisp_Object, int));
+extern int invisible_p P_ ((Lisp_Object, Lisp_Object));
 extern void prepare_menu_bars P_ ((void));
 extern void syms_of_xdisp P_ ((void));
 extern void init_xdisp P_ ((void));
@@ -2373,7 +2244,6 @@ extern int pos_visible_p P_ ((struct window *, int, int *, int));
 extern void memory_warnings P_ ((POINTER_TYPE *, void (*warnfun) ()));
 
 /* Defined in alloc.c */
-extern void check_pure_size P_ ((void));
 extern void allocate_string_data P_ ((struct Lisp_String *, int, int));
 extern void uninterrupt_malloc P_ ((void));
 extern void malloc_warning P_ ((char *));
@@ -2476,9 +2346,8 @@ extern Lisp_Object oblookup P_ ((Lisp_Object, char *, int, int));
 #define LOADHIST_ATTACH(x) \
  if (initialized) Vcurrent_load_list = Fcons (x, Vcurrent_load_list)
 extern Lisp_Object Vcurrent_load_list;
-extern Lisp_Object Vload_history, Vload_suffixes;
-extern int openp P_ ((Lisp_Object, Lisp_Object, Lisp_Object,
-		      Lisp_Object *, int));
+extern Lisp_Object Vload_history;
+extern int openp P_ ((Lisp_Object, Lisp_Object, char *, Lisp_Object *, int));
 extern int isfloat_string P_ ((char *));
 extern void map_obarray P_ ((Lisp_Object, void (*) (Lisp_Object, Lisp_Object),
 			     Lisp_Object));
@@ -2617,7 +2486,6 @@ EXFUN (Fconstrain_to_field, 5);
 EXFUN (Ffield_string, 1);
 EXFUN (Fdelete_field, 1);
 EXFUN (Ffield_beginning, 2);
-EXFUN (Ffield_end, 2);
 EXFUN (Ffield_string_no_properties, 1);
 extern void set_time_zone_rule P_ ((char *));
 
@@ -2785,14 +2653,12 @@ extern void syms_of_casetab P_ ((void));
 
 extern int echoing;
 extern Lisp_Object echo_message_buffer;
-extern struct kboard *echo_kboard;
 extern void cancel_echoing P_ ((void));
 extern Lisp_Object Qdisabled, QCfilter;
 extern Lisp_Object Vtty_erase_char, Vhelp_form, Vtop_level;
 extern int input_pending;
 EXFUN (Fdiscard_input, 0);
 EXFUN (Frecursive_edit, 0);
-EXFUN (Ftop_level, 0);
 EXFUN (Fcommand_execute, 4);
 EXFUN (Finput_pending_p, 0);
 extern Lisp_Object menu_bar_items P_ ((Lisp_Object));
@@ -2814,6 +2680,32 @@ extern void syms_of_keyboard P_ ((void));
 extern void keys_of_keyboard P_ ((void));
 extern char *push_key_description P_ ((unsigned int, char *, int));
 
+/* defined in keymap.c */
+
+#define KEYMAPP(m) (!NILP (get_keymap (m, 0, 0)))
+extern Lisp_Object Qkeymap, Qmenu_bar;
+extern Lisp_Object current_global_map;
+EXFUN (Fmake_sparse_keymap, 1);
+EXFUN (Fcopy_keymap, 1);
+EXFUN (Fdefine_key, 3);
+EXFUN (Flookup_key, 3);
+EXFUN (Fkey_binding, 2);
+EXFUN (Fkey_description, 1);
+EXFUN (Fsingle_key_description, 2);
+EXFUN (Fwhere_is_internal, 4);
+extern Lisp_Object access_keymap P_ ((Lisp_Object, Lisp_Object, int, int, int));
+extern Lisp_Object get_keyelt P_ ((Lisp_Object, int));
+extern Lisp_Object get_keymap P_ ((Lisp_Object, int, int));
+extern void describe_vector P_ ((Lisp_Object, Lisp_Object,
+				 void (*) (Lisp_Object), int,
+				 Lisp_Object, Lisp_Object, int *, int));
+extern void describe_map_tree P_ ((Lisp_Object, int, Lisp_Object, Lisp_Object,
+				   char *, int, int, int));
+extern int current_minor_maps P_ ((Lisp_Object **, Lisp_Object **));
+extern void initial_define_key P_ ((Lisp_Object, int, char *));
+extern void initial_define_lispy_key P_ ((Lisp_Object, char *, char *));
+extern void syms_of_keymap P_ ((void));
+extern void keys_of_keymap P_ ((void));
 
 /* defined in indent.c */
 EXFUN (Fvertical_motion, 2);
@@ -2834,7 +2726,6 @@ EXFUN (Fnext_window, 3);
 EXFUN (Fdelete_window, 1);
 EXFUN (Fselect_window, 1);
 EXFUN (Fset_window_buffer, 2);
-EXFUN (Fwindow_buffer, 1);
 EXFUN (Fget_buffer_window, 2);
 EXFUN (Fsave_window_excursion, UNEVALLED);
 EXFUN (Fsplit_window, 3);
@@ -2853,7 +2744,6 @@ EXFUN (Fset_window_start, 3);
 extern void temp_output_buffer_show P_ ((Lisp_Object));
 extern void replace_buffer_in_all_windows P_ ((Lisp_Object));
 extern void init_window_once P_ ((void));
-extern void init_window P_ ((void));
 extern void syms_of_window P_ ((void));
 extern void keys_of_window P_ ((void));
 
@@ -2900,7 +2790,7 @@ extern void keys_of_frame P_ ((void));
 /* defined in emacs.c */
 extern Lisp_Object decode_env_path P_ ((char *, char *));
 extern Lisp_Object Vinvocation_name, Vinvocation_directory;
-extern Lisp_Object Vinstallation_directory, empty_string;
+extern Lisp_Object Vinstallation_directory;
 EXFUN (Fkill_emacs, 1);
 #if HAVE_SETLOCALE
 void fixup_locale P_ ((void));
@@ -2941,8 +2831,7 @@ extern void init_process P_ ((void));
 extern void syms_of_process P_ ((void));
 
 /* defined in callproc.c */
-extern Lisp_Object Vexec_path, Vexec_suffixes,
-                   Vexec_directory, Vdata_directory;
+extern Lisp_Object Vexec_path, Vexec_directory, Vdata_directory;
 extern Lisp_Object Vdoc_directory;
 EXFUN (Fcall_process, MANY);
 extern int child_setup P_ ((int, int, int, char **, int, Lisp_Object));
@@ -3154,46 +3043,3 @@ extern Lisp_Object Vdirectory_sep_char;
 #else
 #define SWITCH_ENUM_CAST(x) (x)
 #endif
-
-/* Loop over Lisp list LIST.  Signal an error if LIST is not a proper
-   list, or if it contains circles.
-   
-   HARE and TORTOISE should be the names of Lisp_Object variables, and
-   N should be the name of an EMACS_INT variable declared in the
-   function where the macro is used.  Each nested loop should use
-   its own variables.
-
-   In the loop body, HARE is set to each cons of LIST, and N is the
-   length of the list processed so far.  */
-
-#define LIST_END_P(list, obj)				\
-  (NILP (obj)						\
-   ? 1							\
-   : (CONSP (obj)					\
-      ? 0						\
-      : (wrong_type_argument (Qlistp, (list), 0)), 1))
-
-#define FOREACH(hare, list, tortoise, n)		\
-  for (tortoise = hare = (list), n = 0;			\
-       !LIST_END_P (list, hare);			\
-       (hare = XCDR (hare), ++n,			\
-	((n & 1) != 0					\
-	 ? (tortoise = XCDR (tortoise),			\
-	    (EQ (hare, tortoise)			\
-	     && (circular_list_error ((list)), 1)))	\
-	 : 0)))
-
-/* The ubiquitous min and max macros.  */
-
-#ifdef max
-#undef max
-#undef min
-#endif
-#define min(a, b)	((a) < (b) ? (a) : (b))
-#define max(a, b)	((a) > (b) ? (a) : (b))
-
-/* Return a fixnum or float, depending on whether VAL fits in a Lisp
-   fixnum.  */
-
-#define make_fixnum_or_float(val) \
-   (FIXNUM_OVERFLOW_P (val) ? make_float (val) : make_number (val))
