@@ -1,5 +1,5 @@
 /* 16-bit Windows Selection processing for emacs on MS-Windows
-   Copyright (C) 1996, 1997, 2001 Free Software Foundation.
+   Copyright (C) 1996, 1997 Free Software Foundation.
    
 This file is part of GNU Emacs.
 
@@ -40,6 +40,7 @@ Boston, MA 02111-1307, USA.  */
 #include "buffer.h"
 #include "charset.h"
 #include "coding.h"
+#include "composite.h"
 
 /* If ever some function outside this file will need to call any
    clipboard-related function, the following prototypes and constants
@@ -660,6 +661,9 @@ DEFUN ("w16-get-clipboard-data", Fw16_get_clipboard_data, Sw16_get_clipboard_dat
       coding.dst_multibyte = 1;
       Vnext_selection_coding_system = Qnil;
       coding.mode |= CODING_MODE_LAST_BLOCK;
+      /* We explicitely disable composition handling because selection
+	 data should not contain any composition sequence.  */
+      coding.composing = COMPOSITION_DISABLED;
       truelen = get_clipboard_data (CF_OEMTEXT, htext, data_size, 1);
       bufsize = decoding_buffer_size (&coding, truelen);
       buf = (unsigned char *) xmalloc (bufsize);
@@ -714,8 +718,8 @@ and t is the same as `SECONDARY'.")
      into the clipboard if we run under Windows, so we cannot check
      the clipboard alone.)  */
   if ((EQ (selection, Qnil) || EQ (selection, QPRIMARY))
-      && ! NILP (SYMBOL_VALUE (Fintern_soft (build_string ("kill-ring"),
-					     Qnil))))
+      && ! NILP (XSYMBOL (Fintern_soft (build_string ("kill-ring"),
+					Qnil))->value))
     return Qt;
 
   if (EQ (selection, QCLIPBOARD))
