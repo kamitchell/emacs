@@ -2287,7 +2287,6 @@ barf_or_query_if_file_exists (absname, querystring, interactive, statptr, quick)
 DEFUN ("copy-file", Fcopy_file, Scopy_file, 2, 4,
   "fCopy file: \nFCopy %s to file: \np\nP",
   "Copy FILE to NEWNAME.  Both args must be strings.\n\
-If NEWNAME names a directory, copy FILE there.\n\
 Signals a `file-already-exists' error if file NEWNAME already exists,\n\
 unless a third argument OK-IF-ALREADY-EXISTS is supplied and non-nil.\n\
 A number as third arg means request confirmation if NEWNAME already exists.\n\
@@ -2312,12 +2311,8 @@ A prefix arg makes KEEP-TIME non-nil.")
   CHECK_STRING (file, 0);
   CHECK_STRING (newname, 1);
 
-  if (!NILP (Ffile_directory_p (newname)))
-    newname = Fexpand_file_name (file, newname);
-  else
-    newname = Fexpand_file_name (newname, Qnil);
-
   file = Fexpand_file_name (file, Qnil);
+  newname = Fexpand_file_name (newname, Qnil);
 
   /* If the input file name has special constructs in it,
      call the corresponding file handler.  */
@@ -2347,12 +2342,25 @@ A prefix arg makes KEEP-TIME non-nil.")
   else if (NILP (keep_time))
     {
       EMACS_TIME now;
+      DWORD attributes;
+      char * filename;
+
       EMACS_GET_TIME (now);
-      if (set_file_times (XSTRING (encoded_newname)->data,
-			  now, now))
-	Fsignal (Qfile_date_error,
-		 Fcons (build_string ("Cannot set file date"),
-			Fcons (newname, Qnil)));
+      filename = XSTRING (encoded_newname)->data;
+
+      /* Ensure file is writable while its modified time is set.  */
+      attributes = GetFileAttributes (filename);
+      SetFileAttributes (filename, attributes ^ FILE_ATTRIBUTE_READONLY);
+      if (set_file_times (filename, now, now))
+	{
+	  /* Restore original attributes.  */
+	  SetFileAttributes (filename, attributes);
+	  Fsignal (Qfile_date_error,
+		   Fcons (build_string ("Cannot set file date"),
+			  Fcons (newname, Qnil)));
+	}
+      /* Restore original attributes.  */
+      SetFileAttributes (filename, attributes);
     }
 #else /* not WINDOWSNT */
   ifd = emacs_open (XSTRING (encoded_file)->data, O_RDONLY, 0);
