@@ -1,6 +1,6 @@
-2003-03-18  Francesco Potort,Al(B  <pot@gnu.org>
+2004-05-08  Thien-Thi Nguyen  <ttn@gnu.org>
 
-	* Version 21.3 released.
+	* notes/BRANCH: New file, to be maintained per CVS branch.
 
 2001-10-20  Gerd Moellmann  <gerd@gnu.org>
 
