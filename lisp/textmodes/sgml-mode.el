@@ -59,7 +59,7 @@
 ;; kludgy kind of tradeoff.
 (defvar sgml-specials '(?\")
   "List of characters that have a special meaning for SGML mode.
-This list is used when first loading the `sgml-mode' library.
+This list is used when first loading the sgml-mode library.
 The supported characters and potential disadvantages are:
 
   ?\\\"	Makes \" in text start a string.
@@ -75,7 +75,7 @@ with comments, so we normally turn it off.")
 
 (defvar sgml-quick-keys nil
   "Use <, >, &, SPC and `sgml-specials' keys \"electrically\" when non-nil.
-This takes effect when first loading the `sgml-mode' library.")
+This takes effect when first loading the sgml-mode library.")
 
 
 (defvar sgml-mode-map
@@ -104,8 +104,9 @@ This takes effect when first loading the `sgml-mode' library.")
         (define-key map "\"" 'sgml-name-self))
       (when (memq ?' sgml-specials)
         (define-key map "'" 'sgml-name-self)))
-    (define-key map (vector (make-char 'latin-iso8859-1))
-      'sgml-maybe-name-self)
+    (dotimes (i 96)
+      (define-key map (vector (encode-char (+ i 32) 'latin-iso8859-1))
+	'sgml-maybe-name-self))
     (let ((c 127)
 	  (map (nth 1 map)))
       (while (< (setq c (1+ c)) 256)
@@ -191,7 +192,7 @@ This takes effect when first loading the `sgml-mode' library.")
   (let ((table (make-char-table 'sgml-table))
 	(i 32)
 	elt)
-    (while (< i 256)
+    (while (< i 128)
       (setq elt (aref sgml-char-names i))
       (if elt (aset table (make-char 'latin-iso8859-1 i) elt))
       (setq i (1+ i)))
