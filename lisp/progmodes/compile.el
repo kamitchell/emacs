@@ -66,38 +66,6 @@ will be parsed and highlighted as soon as you try to move to them."
 		 (integer :tag "First N lines"))
   :group 'compilation)
 
-(defun grep-compute-defaults ()
-  (unless grep-command
-    (setq grep-command
-	  (if (equal (condition-case nil ; in case "grep" isn't in exec-path
-			 (call-process grep-program nil nil nil
-				       "-e" "foo" null-device)
-		       (error nil))
-		     1)
-	      (format "%s -n -e " grep-program)
-	    (format "%s -n " grep-program))))
-  (unless grep-find-use-xargs
-    (setq grep-find-use-xargs
-	  (if (and
-               (equal (call-process "find" nil nil nil
-                                    null-device "-print0")
-                      0)
-               (equal (call-process "xargs" nil nil nil
-                                    "-0" "-e" "echo")
-		     0))
-	      'gnu)))
-  (unless grep-find-command
-    (setq grep-find-command
-	  (cond ((eq grep-find-use-xargs 'gnu)
-		 (format "%s . -type f -print0 | xargs -0 -e %s"
-			 find-program grep-command))
-		(grep-find-use-xargs
-		 (format "%s . -type f -print | xargs %s"
-                         find-program grep-command))
-		(t (cons (format "%s . -type f -exec %s {} %s \\;"
-				 find-program grep-command null-device)
-			 (+ 22 (length grep-command))))))))
-
 (defcustom grep-command nil
   "The default grep command for \\[grep].
 The default value of this variable is set up by `grep-compute-defaults';
@@ -370,7 +338,24 @@ of[ \t]+\"?\\([a-zA-Z]?:?[^\":\n]+\\)\"?:" 3 2)
     ;; cf90-113 f90comp: ERROR NSE, File = Hoved.f90, Line = 16, Column = 3
     (".* ERROR [a-zA-Z0-9 ]+, File = \\(.+\\), Line = \\([0-9]+\\), Column = \\([0-9]+\\)"
      1 2 3)
-    )
+
+    ;; VMS, various compilers:
+    ;;
+    ;; 40    FORMAT (I3,)
+    ;; ................^
+    ;; %F90-W-ERROR, An extra comma appears in the format list.
+    ;; at line number 13 in file DISK$:[USER]SAMP_MESS.FOR;4
+    ;;
+    ;;  return *this ;
+    ;; .........^
+    ;; %CXX-E-BADNONREFINI, a reference of type "Field &"
+    ;; (not const-qualified) cannot be initialized with a value of type "Field3d"
+    ;; at line number 175 in file USER:[RMS.CXX_STUFF]HELPER.C;33
+    ("^.+\n.+\n%[A-Z0-9]+-[FEWI]-[A-Z]+, .*\nat line number \\([0-9]+\\) in file \\(.*\\)"
+     2 1)
+    ("^.+\n.+\n%[A-Z0-9]+-[FEWI]-[A-Z]+, .*\n.*\nat line number \\([0-9]+\\) in file \\(.*\\)"
+     2 1)
+    ("^.+\n.+\n%[A-Z0-9]+-[FEWI]-[A-Z]+, .*\n.*\n.*\nat line number \\([0-9]+\\) in file \\(.*\\)" 2 1))
 
   "Alist that specifies how to match errors in compiler output.
 Each elt has the form (REGEXP FILE-IDX LINE-IDX [COLUMN-IDX FILE-FORMAT...])
@@ -482,7 +467,7 @@ This variable's value takes effect when `grep-compute-defaults' is called.")
 (defvar grep-find-use-xargs nil
   "Whether \\[grep-find] uses the `xargs' utility by default.
 
-If nil, it uses `find -exec'; if `gnu', it uses `find -print0' and `xargs -0';
+If nil, it uses `grep -exec'; if `gnu', it uses `find -print0' and `xargs -0';
 if not nil and not `gnu', it uses `find -print' and `xargs'.
 
 This variable's value takes effect when `grep-compute-defaults' is called.")
@@ -610,6 +595,38 @@ to a function that generates a unique name."
 		   (t
 		    (cons msg code)))
 	   (cons msg code)))))
+
+(defun grep-compute-defaults ()
+  (unless grep-command
+    (setq grep-command
+	  (if (equal (condition-case nil ; in case "grep" isn't in exec-path
+			 (call-process grep-program nil nil nil
+				       "-e" "foo" null-device)
+		       (error nil))
+		     1)
+	      (format "%s -n -e " grep-program)
+	    (format "%s -n " grep-program))))
+  (unless grep-find-use-xargs
+    (setq grep-find-use-xargs
+	  (if (and
+               (equal (call-process "find" nil nil nil
+                                    null-device "-print0")
+                      0)
+               (equal (call-process "xargs" nil nil nil
+                                    "-0" "-e" "echo")
+		     0))
+	      'gnu)))
+  (unless grep-find-command
+    (setq grep-find-command
+	  (cond ((eq grep-find-use-xargs 'gnu)
+		 (format "%s . -type f -print0 | xargs -0 -e %s"
+			 find-program grep-command))
+		(grep-find-use-xargs
+		 (format "%s . -type f -print | xargs %s"
+                         find-program grep-command))
+		(t (cons (format "%s . -type f -exec %s {} %s \\;"
+				 find-program grep-command null-device)
+			 (+ 22 (length grep-command))))))))
 
 ;;;###autoload
 (defun grep (command-args)
@@ -782,7 +799,8 @@ Returns the compilation buffer created."
 	(erase-buffer)
 	(buffer-enable-undo (current-buffer))
 	(setq default-directory thisdir)
-	(insert "cd " thisdir "\n" command "\n")
+	(insert (if (eq system-type 'vax-vms) "set default" "cd")
+		" " thisdir "\n" command "\n")
 	(set-buffer-modified-p nil))
       ;; If we're already in the compilation buffer, go to the end
       ;; of the buffer, so point will track the compilation output.
@@ -826,23 +844,24 @@ Returns the compilation buffer created."
 	    (funcall compilation-process-setup-function))
 	;; Start the compilation.
 	(if (fboundp 'start-process)
- 	    (let* ((process-environment
-		    (append
-		     (if (and (boundp 'system-uses-terminfo)
-			      system-uses-terminfo)
-			 (list "TERM=dumb" "TERMCAP="
-			       (format "COLUMNS=%d" (window-width)))
-		       (list "TERM=emacs"
-			     (format "TERMCAP=emacs:co#%d:tc=unknown:"
-				     (window-width))))
-		     ;; Set the EMACS variable, but
-		     ;; don't override users' setting of $EMACS.
-		     (if (getenv "EMACS")
-			 process-environment
-		       (cons "EMACS=t" process-environment))))
+	    (let* ((process-environment process-environment)
 		   (proc (start-process-shell-command (downcase mode-name)
 						      outbuf
 						      command)))
+	      ;; Set the terminal type
+	      (setq process-environment
+		    (if (and (boundp 'system-uses-terminfo)
+			     system-uses-terminfo)
+			(list "TERM=dumb" "TERMCAP="
+			      (format "COLUMNS=%d" (window-width)))
+		      (list "TERM=emacs"
+			    (format "TERMCAP=emacs:co#%d:tc=unknown:"
+				    (window-width)))))
+	      ;; Set the EMACS variable, but
+	      ;; don't override users' setting of $EMACS.
+	      (if (getenv "EMACS")
+		  (setq process-environment
+			(cons "EMACS=t" process-environment)))
 	      (set-process-sentinel proc 'compilation-sentinel)
 	      (set-process-filter proc 'compilation-filter)
 	      (set-marker (process-mark proc) (point) outbuf)
@@ -1333,7 +1352,6 @@ Does NOT find the source line like \\[next-error]."
 	    (let ((inhibit-read-only t)
 		  (buffer-undo-list t)
 		  deactivate-mark
-                  (buffer-was-modified (buffer-modified-p))
 		  (error-list compilation-error-list))
 	      (while error-list
 		(save-excursion
@@ -1341,8 +1359,7 @@ Does NOT find the source line like \\[next-error]."
 				       (progn (end-of-line) (point))
 				       '(mouse-face highlight help-echo "\
 mouse-2: visit this file and line")))
-		(setq error-list (cdr error-list)))
-              (set-buffer-modified-p buffer-was-modified))
+		(setq error-list (cdr error-list))))
 	    )))))
 
 (defun compile-mouse-goto-error (event)
