@@ -493,13 +493,13 @@ Note that CC Mode uses this variable to set many other variables that
 handle the paragraph filling.  That's done at mode initialization or
 when you switch to a style which sets this variable.  Thus, if you
 change it in some other way, e.g. interactively in a CC Mode buffer,
-you will need to do \\[c-mode] (or whatever mode you're currently
-using) to reinitialize.
+you will need to do \\[c-setup-paragraph-variables] afterwards so that
+the other variables are updated with the new value.
 
-Note also that when CC Mode starts up, the other variables are
-modified before the mode hooks are run.  If you change this variable
-in a mode hook, you can call `c-setup-paragraph-variables' afterwards
-to redo it."
+Note also that when CC Mode starts up, all variables are initialized
+before the mode hooks are run.  It's therefore necessary to make a
+call to `c-setup-paragraph-variables' explicitly if you change this
+variable in a mode hook."
   :type '(radio
 	  (regexp :tag "Regexp for all modes")
 	  (list
@@ -878,12 +878,11 @@ This hook gets called after a line is indented by the mode."
   :group 'c)
 
 (defcustom-c-stylevar c-label-minimum-indentation 1
-  "*Minimum indentation for lines inside of top-level constructs.
+  "*Minimum indentation for lines inside code blocks.
 This variable typically only affects code using the `gnu' style, which
-mandates a minimum of one space in front of every line inside
-top-level constructs.  Specifically, the function
-`c-gnu-impose-minimum' on your `c-special-indent-hook' is what
-enforces this."
+mandates a minimum of one space in front of every line inside code
+blocks.  Specifically, the function `c-gnu-impose-minimum' on your
+`c-special-indent-hook' is what enforces this."
   :type 'integer
   :group 'c)
 
@@ -1271,6 +1270,14 @@ Here is the current list of valid syntactic element symbols:
 	   (get 'c-offsets-alist 'c-stylevar-fallback)))
   :group 'c)
 
+;; The syntactic symbols that can occur inside code blocks. Used by
+;; `c-gnu-impose-minimum'.
+(defconst c-inside-block-syms
+  '(defun-block-intro block-open block-close statement statement-cont
+    statement-block-intro statement-case-intro statement-case-open
+    substatement substatement-open substatement-label case-label label
+    do-while-closure else-clause catch-clause inlambda))
+
 (defcustom c-style-variables-are-local-p t
   "*Whether style variables should be buffer local by default.
 If non-nil, then all indentation style related variables will be made
@@ -1575,7 +1582,7 @@ Set from `c-comment-prefix-regexp' at mode initialization.")
 			 '1-bit)
 		       list)))
 
-    (let ((buf (generate-new-buffer "test"))
+    (let ((buf (generate-new-buffer " test"))
 	  parse-sexp-lookup-properties
 	  parse-sexp-ignore-comments
 	  lookup-syntax-properties)

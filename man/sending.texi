@@ -427,7 +427,7 @@ twice.
 
 @c This is indexed in mule.texi, node "Recognize Coding".
 @c @vindex sendmail-coding-system
-  When you send a message that contains non-ASCII characters, they need
+  When you send a message that contains non-@acronym{ASCII} characters, they need
 to be encoded with a coding system (@pxref{Coding Systems}).  Usually
 the coding system is specified automatically by your chosen language
 environment (@pxref{Language Environments}).  You can explicitly specify
@@ -687,7 +687,7 @@ message into outgoing mail.  To do this, add
 and sending mail---Mail mode.  Emacs has alternative facilities for
 editing and sending mail, including
 MH-E and Message mode, not documented in this manual.
-@xref{Top,,MH-E,mh-e, The Emacs Interface to MH}.  @xref{Top,,,message,
+@xref{Top,,MH-E,mh-e, The Emacs Interface to MH}.  @xref{Top,,Message,message,
 Message Manual}.  You can choose any of them as your preferred method.
 The commands @code{C-x m}, @code{C-x 4 m} and @code{C-x 5 m} use
 whichever agent you have specified, as do various other Emacs commands

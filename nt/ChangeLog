@@ -1,4 +1,29 @@
-2003-09-03  Peter Runestig <peter@runestig.com>
+2004-04-10  Benjamin Riefenstahl  <Benjamin.Riefenstahl@epost.de>
+
+	* runemacs.c (WinMain): Let emacs environment default to parent.
+
+2004-03-11  Jason Rumney  <jasonr@gnu.org>
+
+	* paths.h: Remove PATH_LOCK, add PATH_BITMAPS.
+
+2004-03-10  Juanma Barranquero  <lektu@terra.es>
+
+	* makefile.w32-in (install): Don't try to copy
+	../lib-src/fns-*.el, as it isn't used anymore.
+
+2004-01-28  Peter Runestig  <peter@runestig.com>
+
+	* gmake.defs, nmake.defs: Add linking to ``winspool.lib''.
+
+2003-12-24  Miles Bader  <miles@gnu.ai.mit.edu>
+
+	* .cvsignore: Add `.arch-inventory'.
+
+2003-11-22  Lars Hansen  <larsh@math.ku.dk>
+
+	* inc/grp.h: Added.
+
+2003-09-03  Peter Runestig  <peter@runestig.com>
 
 	* configure.bat: Create ``makefile'' in directories man, lispref
 	and lispintro.
@@ -589,7 +614,7 @@
 1999-01-22  Geoff Voelker  <voelker@cs.washington.edu>
 
 	* icons: New directory with Davenport's icons.
-	icons/sink.ico: Renamed from emacs.ico.
+	* icons/sink.ico: Renamed from emacs.ico.
 
 	* makefile.nt (install, fast_install): Install Windows icons
 	into etc/icons.
@@ -913,8 +938,8 @@
 
 1995-06-09  Geoff Voelker  <voelker@cs.washington.edu>
 
-	* emacs.bat.in: Renamed from emacs.bat
-	(emacs_dir): Renamed from emacs_path
+	* emacs.bat.in: Renamed from emacs.bat.
+	(emacs_dir): Renamed from emacs_path.
 	Definition removed.
 
 	* addpm.c: New file.

@@ -33,7 +33,7 @@ some of the edit/review concepts inherent in the design of Plan 9's
 Most likely you will have to turn this option on and play around with
 it to get a real sense of how it works."
   :tag "Smart display of output"
-  :link '(info-link "(eshell)Smart display of output")
+  ;; :link '(info-link "(eshell)Smart display of output")
   :group 'eshell-module)
 
 ;;; Commentary:
@@ -242,7 +242,7 @@ The options are `begin', `after' or `end'."
 
 (defun eshell-smart-maybe-jump-to-end ()
   "Jump to the end of the input buffer.
-This is done whenever a command exits sucessfully and both the command
+This is done whenever a command exits successfully and both the command
 and the end of the buffer are still visible."
   (when (and (= eshell-last-command-status 0)
 	     (if (eq eshell-review-quick-commands 'not-even-short-output)

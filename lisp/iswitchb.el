@@ -377,18 +377,11 @@ See documentation of `walk-windows' for useful values.")
   "Iswitchb-specific customization of minibuffer setup.
 
 This hook is run during minibuffer setup iff `iswitchb' will be active.
-It is intended for use in customizing iswitchb for interoperation
-with other packages."
-;;;   For instance:
-
-;;;   \(add-hook 'iswitchb-minibuffer-setup-hook
-;;; 	    \(function
-;;; 	     \(lambda ()
-;;; 	       \(make-local-variable 'resize-minibuffer-window-max-height)
-;;; 	       \(setq resize-minibuffer-window-max-height 3))))
-
-;;; will constrain rsz-mini to a maximum minibuffer height of 3 lines when
-;;; iswitchb is running.  Copied from `icomplete-minibuffer-setup-hook'."
+For instance:
+\(add-hook 'iswitchb-minibuffer-setup-hook
+	  '\(lambda () (set (make-local-variable 'max-mini-window-height) 3)))
+will constrain the minibuffer to a maximum height of 3 lines when
+iswitchb is running."
   :type 'hook
   :group 'iswitchb)
 
@@ -610,7 +603,8 @@ If REQUIRE-MATCH is non-nil, an existing-buffer must be selected."
 				 nil	;require-match [handled elsewhere]
 				 nil	;initial-contents
 				 'iswitchb-history)))
-    (if (get-buffer iswitchb-final-text)
+    (if (and (not (eq iswitchb-exit 'usefirst))
+	     (get-buffer iswitchb-final-text))
 	;; This happens for example if the buffer was chosen with the mouse.
 	(setq iswitchb-matches (list iswitchb-final-text)))
 
@@ -712,7 +706,9 @@ The result is stored in `iswitchb-common-match-string'."
   (interactive)
   (if (or (not iswitchb-require-match)
 	   (iswitchb-existing-buffer-p))
-      (throw 'exit nil)))
+      (progn
+	(setq iswitchb-exit 'usefirst)
+	(throw 'exit nil))))
 
 (defun iswitchb-select-buffer-text ()
   "Select the buffer named by the prompt.

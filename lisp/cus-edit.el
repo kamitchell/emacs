@@ -1,6 +1,6 @@
 ;;; cus-edit.el --- tools for customizing Emacs and Lisp packages
 ;;
-;; Copyright (C) 1996,97,1999,2000,01,02,2003  Free Software Foundation, Inc.
+;; Copyright (C) 1996,97,1999,2000,01,02,03,2004  Free Software Foundation, Inc.
 ;;
 ;; Author: Per Abrahamsen <abraham@dina.kvl.dk>
 ;; Maintainer: FSF
@@ -285,11 +285,6 @@
 (defgroup modeline nil
   "Content of the modeline."
   :group 'environment)
-
-(defgroup fill nil
-  "Indenting and filling text."
-  :link '(custom-manual "(emacs)Filling Text")
-  :group 'editing)
 
 (defgroup editing-basics nil
   "Most basic editing facilities."
@@ -1956,7 +1951,7 @@ If INITIAL-STRING is non-nil, use that rather than \"Parent groups:\"."
 	(type (widget-type widget))
 	(buttons (widget-get widget :buttons))
 	(start (point))
-	found)
+	(parents nil))
     (insert (or initial-string "Parent groups:"))
     (mapatoms (lambda (symbol)
 		(let ((entry (assq name (get symbol 'custom-group))))
@@ -1967,12 +1962,30 @@ If INITIAL-STRING is non-nil, use that rather than \"Parent groups:\"."
 			   :tag (custom-unlispify-tag-name symbol)
 			   symbol)
 			  buttons)
-		    (setq found t)))))
-    (widget-put widget :buttons buttons)
-    (if found
-	(insert "\n")
+		    (setq parents (cons symbol parents))))))
+    (and (null (get name 'custom-links)) ;No links of its own.
+         (= (length parents) 1)         ;A single parent.
+         (let* ((links (get (car parents) 'custom-links))
+                (many (> (length links) 2)))
+           (when links
+             (insert "\nParent documentation: ")
+             (while links
+               (push (widget-create-child-and-convert widget (car links))
+                     buttons)
+               (setq links (cdr links))
+               (cond ((null links)
+                      (insert ".\n"))
+                     ((null (cdr links))
+                      (if many
+                          (insert ", and ")
+                        (insert " and ")))
+                     (t
+                      (insert ", ")))))))
+    (if parents
+        (insert "\n")
       (delete-region start (point)))
-    found))
+    (widget-put widget :buttons buttons)
+    parents))
 
 ;;; The `custom-comment' Widget.
 
