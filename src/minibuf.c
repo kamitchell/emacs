@@ -1,6 +1,6 @@
 /* Minibuffer input and completion.
    Copyright (C) 1985, 1986, 1993, 1994, 1995, 1996, 1997, 1998, 1999,
-   2000, 2001 Free Software Foundation, Inc.
+   2000, 2001, 2003 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -324,55 +324,6 @@ read_minibuf_noninteractive (map, initial, prompt, backup_n, expflag,
 }
 
 
-DEFUN ("minibuffer-prompt-end", Fminibuffer_prompt_end,
-       Sminibuffer_prompt_end, 0, 0, 0,
-  "Return the buffer position of the end of the minibuffer prompt.\n\
-Return (point-min) if current buffer is not a mini-buffer.")
-     ()
-{
-  /* This function is written to be most efficient when there's a prompt.  */
-  Lisp_Object beg = make_number (BEGV);
-  Lisp_Object end = Ffield_end (beg, Qnil);
-  
-  if (XINT (end) == ZV && NILP (Fget_char_property (beg, Qfield, Qnil)))
-    return make_number (beg);
-  else
-    return end;
-}
-
-DEFUN ("minibuffer-contents", Fminibuffer_contents,
-       Sminibuffer_contents, 0, 0, 0,
-  "Return the user input in a minbuffer as a string.\n\
-The current buffer must be a minibuffer.")
-     ()
-{
-  int prompt_end = XINT (Fminibuffer_prompt_end ());
-  return make_buffer_string (prompt_end, ZV, 1);
-}
-
-DEFUN ("minibuffer-contents-no-properties", Fminibuffer_contents_no_properties,
-       Sminibuffer_contents_no_properties, 0, 0, 0,
-  "Return the user input in a minbuffer as a string, without text-properties.\n\
-The current buffer must be a minibuffer.")
-     ()
-{
-  int prompt_end = XINT (Fminibuffer_prompt_end ());
-  return make_buffer_string (prompt_end, ZV, 0);
-}
-
-DEFUN ("delete-minibuffer-contents", Fdelete_minibuffer_contents,
-       Sdelete_minibuffer_contents, 0, 0, 0,
-  "Delete all user input in a minibuffer.\n\
-The current buffer must be a minibuffer.")
-     ()
-{
-  int prompt_end = XINT (Fminibuffer_prompt_end ());
-  if (prompt_end < ZV)
-    del_range (prompt_end, ZV);
-  return Qnil;
-}
-
-
 /* Read from the minibuffer using keymap MAP, initial contents INITIAL
    (a string), putting point minus BACKUP_N bytes from the end of INITIAL,
    prompting with PROMPT (a string), using history list HISTVAR
@@ -634,9 +585,9 @@ read_minibuf (map, initial, prompt, backup_n, expflag,
   /* Make minibuffer contents into a string.  */
   Fset_buffer (minibuffer);
   if (allow_props)
-    val = Fminibuffer_contents ();
+    val = Ffield_string (make_number (ZV));
   else
-    val = Fminibuffer_contents_no_properties ();
+    val = Ffield_string_no_properties (make_number (ZV));
 
   /* VAL is the string of minibuffer text.  */
 
@@ -651,7 +602,7 @@ read_minibuf (map, initial, prompt, backup_n, expflag,
       Lisp_Object histval;
 
       /* If variable is unbound, make it nil.  */
-      if (EQ (SYMBOL_VALUE (Vminibuffer_history_variable), Qunbound))
+      if (EQ (XSYMBOL (Vminibuffer_history_variable)->value, Qunbound))
 	Fset (Vminibuffer_history_variable, Qnil);
 
       histval = Fsymbol_value (Vminibuffer_history_variable);
@@ -1645,7 +1596,7 @@ do_completion ()
   Lisp_Object last;
   struct gcpro gcpro1, gcpro2;
 
-  completion = Ftry_completion (Fminibuffer_contents (),
+  completion = Ftry_completion (Ffield_string (make_number (ZV)),
 				Vminibuffer_completion_table,
 				Vminibuffer_completion_predicate);
   last = last_exact_completion;
@@ -1667,7 +1618,7 @@ do_completion ()
       return 1;
     }
 
-  string = Fminibuffer_contents ();
+  string = Ffield_string (make_number (ZV));
 
   /* COMPLETEDP should be true if some completion was done, which
      doesn't include simply changing the case of the entered string.
@@ -1680,7 +1631,7 @@ do_completion ()
   if (!EQ (tem, Qt))
     /* Rewrite the user's input.  */
     {
-      Fdelete_minibuffer_contents (); /* Some completion happened */
+      Fdelete_field (make_number (ZV)); /* Some completion happened */
       Finsert (1, &completion);
 
       if (! completedp)
@@ -1696,7 +1647,7 @@ do_completion ()
     }
 
   /* It did find a match.  Do we match some possibility exactly now? */
-  tem = test_completion (Fminibuffer_contents ());
+  tem = test_completion (Ffield_string (make_number (ZV)));
   if (NILP (tem))
     {
       /* not an exact match */
@@ -1720,7 +1671,7 @@ do_completion ()
   last_exact_completion = completion;
   if (!NILP (last))
     {
-      tem = Fminibuffer_contents ();
+      tem = Ffield_string (make_number (ZV));
       if (!NILP (Fequal (tem, last)))
 	Fminibuffer_completion_help ();
     }
@@ -1845,10 +1796,10 @@ a repetition of this command will exit.")
   Lisp_Object val;
 
   /* Allow user to specify null string */
-  if (XINT (Fminibuffer_prompt_end ()) == ZV)
+  if (XINT (Ffield_beginning (make_number (ZV), Qnil)) == ZV)
     goto exit;
 
-  if (!NILP (test_completion (Fminibuffer_contents ())))
+  if (!NILP (test_completion (Ffield_string (make_number (ZV)))))
     goto exit;
 
   /* Call do_completion, but ignore errors.  */
@@ -1896,7 +1847,7 @@ Return nil if there is no valid completion, else t.")
   /* We keep calling Fbuffer_string rather than arrange for GC to
      hold onto a pointer to one of the strings thus made.  */
 
-  completion = Ftry_completion (Fminibuffer_contents (),
+  completion = Ftry_completion (Ffield_string (make_number (ZV)),
 				Vminibuffer_completion_table,
 				Vminibuffer_completion_predicate);
   if (NILP (completion))
@@ -1909,7 +1860,7 @@ Return nil if there is no valid completion, else t.")
     return Qnil;
 
 #if 0 /* How the below code used to look, for reference. */
-  tem = Fminibuffer_contents ();
+  tem = Ffield_string (make_number (ZV));
   b = XSTRING (tem)->data;
   i = ZV - 1 - XSTRING (completion)->size;
   p = XSTRING (completion)->data;
@@ -1928,7 +1879,7 @@ Return nil if there is no valid completion, else t.")
     int buffer_nchars, completion_nchars;
 
     CHECK_STRING (completion, 0);
-    tem = Fminibuffer_contents ();
+    tem = Ffield_string (make_number (ZV));
     GCPRO2 (completion, tem);
     /* If reading a file name,
        expand any $ENVVAR refs in the buffer and in TEM.  */
@@ -1939,7 +1890,7 @@ Return nil if there is no valid completion, else t.")
 	if (! EQ (substituted, tem))
 	  {
 	    tem = substituted;
-	    Fdelete_minibuffer_contents ();
+	    Fdelete_field (make_number (ZV));
 	    insert_from_string (tem, 0, 0, XSTRING (tem)->size,
 				STRING_BYTES (XSTRING (tem)), 0);
 	  }
@@ -1981,7 +1932,7 @@ Return nil if there is no valid completion, else t.")
   }
 #endif /* Rewritten code */
   
-  prompt_end_charpos = XINT (Fminibuffer_prompt_end ());
+  prompt_end_charpos = XINT (Ffield_beginning (make_number (ZV), Qnil));
 
   {
     int prompt_end_bytepos;
@@ -1995,7 +1946,7 @@ Return nil if there is no valid completion, else t.")
   if (i == XSTRING (completion)->size)
     {
       GCPRO1 (completion);
-      tem = Ftry_completion (concat2 (Fminibuffer_contents (), build_string (" ")),
+      tem = Ftry_completion (concat2 (Ffield_string (make_number (ZV)), build_string (" ")),
 			     Vminibuffer_completion_table,
 			     Vminibuffer_completion_predicate);
       UNGCPRO;
@@ -2006,7 +1957,7 @@ Return nil if there is no valid completion, else t.")
 	{
 	  GCPRO1 (completion);
 	  tem =
-	    Ftry_completion (concat2 (Fminibuffer_contents (), build_string ("-")),
+	    Ftry_completion (concat2 (Ffield_string (make_number (ZV)), build_string ("-")),
 			     Vminibuffer_completion_table,
 			     Vminibuffer_completion_predicate);
 	  UNGCPRO;
@@ -2047,7 +1998,7 @@ Return nil if there is no valid completion, else t.")
 
   /* Otherwise insert in minibuffer the chars we got */
 
-  Fdelete_minibuffer_contents ();
+  Fdelete_field (make_number (ZV));
   insert_from_string (completion, 0, 0, i, i_byte, 1);
   return Qt;
 }
@@ -2243,7 +2194,7 @@ DEFUN ("minibuffer-completion-help", Fminibuffer_completion_help, Sminibuffer_co
   Lisp_Object completions;
 
   message ("Making completion list...");
-  completions = Fall_completions (Fminibuffer_contents (),
+  completions = Fall_completions (Ffield_string (make_number (ZV)),
 				  Vminibuffer_completion_table,
 				  Vminibuffer_completion_predicate,
 				  Qt);
@@ -2339,6 +2290,7 @@ or until the next input event arrives, whichever comes first.")
   (string)
      Lisp_Object string;
 {
+  CHECK_STRING (string, 0);
   temp_echo_area_glyphs (XSTRING (string)->data);
   return Qnil;
 }
@@ -2519,11 +2471,6 @@ properties.");
   defsubr (&Sread_no_blanks_input);
   defsubr (&Sminibuffer_depth);
   defsubr (&Sminibuffer_prompt);
-
-  defsubr (&Sminibuffer_prompt_end);
-  defsubr (&Sminibuffer_contents);
-  defsubr (&Sminibuffer_contents_no_properties);
-  defsubr (&Sdelete_minibuffer_contents);
 
   defsubr (&Stry_completion);
   defsubr (&Sall_completions);
