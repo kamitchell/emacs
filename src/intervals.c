@@ -2269,7 +2269,7 @@ int
 get_property_and_range (pos, prop, val, start, end, object)
      int pos;
      Lisp_Object prop, *val;
-     int *start, *end;
+     EMACS_INT *start, *end;
      Lisp_Object object;
 {
   INTERVAL i, prev, next;
@@ -2587,6 +2587,3 @@ set_intervals_multibyte (multi_flag)
     set_intervals_multibyte_1 (BUF_INTERVALS (current_buffer), multi_flag,
 			       BEG, BEG_BYTE, Z, Z_BYTE);
 }
-
-/* arch-tag: 3d402b60-083c-4271-b4a3-ebd9a74bfe27
-   (do not change this comment) */
