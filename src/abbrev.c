@@ -1,6 +1,5 @@
 /* Primitives for word-abbrev mode.
-   Copyright (C) 1985, 1986, 1993, 1996, 1998, 2001
-   Free Software Foundation, Inc.
+   Copyright (C) 1985, 1986, 1993, 1996, 1998 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -129,7 +128,7 @@ which is incremented each time the abbrev is used.")
 
   sym = Fintern (name, table);
 
-  oexp = SYMBOL_VALUE (sym);
+  oexp = XSYMBOL (sym)->value;
   ohook = XSYMBOL (sym)->function;
   if (!((EQ (oexp, expansion)
 	 || (STRINGP (oexp) && STRINGP (expansion)
@@ -190,13 +189,12 @@ The default is to try buffer's mode-specific abbrev table, then global table.")
       sym = Qnil;
       if (!NILP (current_buffer->abbrev_table))
 	sym = Fintern_soft (abbrev, current_buffer->abbrev_table);
-      if (NILP (SYMBOL_VALUE (sym)))
+      if (NILP (XSYMBOL (sym)->value))
 	sym = Qnil;
       if (NILP (sym))
 	sym = Fintern_soft (abbrev, Vglobal_abbrev_table);
     }
-  if (NILP (SYMBOL_VALUE (sym)))
-    return Qnil;
+  if (NILP (XSYMBOL (sym)->value)) return Qnil;
   return sym;
 }
 
@@ -224,12 +222,13 @@ Returns the abbrev symbol, if expansion took place.")
 {
   register char *buffer, *p;
   int wordstart, wordend;
-  register int wordstart_byte, wordend_byte, idx;
+  register int wordstart_byte, wordend_byte, idx, idx_byte;
   int whitecnt;
   int uccount = 0, lccount = 0;
   register Lisp_Object sym;
   Lisp_Object expansion, hook, tem;
   Lisp_Object value;
+  int multibyte = ! NILP (current_buffer->enable_multibyte_characters);
 
   value = Qnil;
 
@@ -276,26 +275,39 @@ Returns the abbrev symbol, if expansion took place.")
 
   p = buffer = (char *) alloca (wordend_byte - wordstart_byte);
 
-  for (idx = wordstart_byte; idx < wordend_byte; idx++)
+  for (idx = wordstart, idx_byte = wordstart_byte; idx < wordend;)
     {
-      /* ??? This loop needs to go by characters!  */
-      register int c = FETCH_BYTE (idx);
+      register int c;
+
+      if (multibyte)
+	{
+	  FETCH_CHAR_ADVANCE (c, idx, idx_byte);
+	}
+      else
+	{
+	  c = FETCH_BYTE (idx_byte);
+	  idx++, idx_byte++;
+	}
+
       if (UPPERCASEP (c))
 	c = DOWNCASE (c), uccount++;
       else if (! NOCASEP (c))
 	lccount++;
-      *p++ = c;
+      if (multibyte)
+	p += CHAR_STRING (c, p);
+      else
+	*p++ = c;
     }
 
   if (VECTORP (current_buffer->abbrev_table))
     sym = oblookup (current_buffer->abbrev_table, buffer,
-		    wordend - wordstart, wordend_byte - wordstart_byte);
+		    wordend - wordstart, p - buffer);
   else
     XSETFASTINT (sym, 0);
-  if (INTEGERP (sym) || NILP (SYMBOL_VALUE (sym)))
+  if (INTEGERP (sym) || NILP (XSYMBOL (sym)->value))
     sym = oblookup (Vglobal_abbrev_table, buffer,
-		    wordend - wordstart, wordend_byte - wordstart_byte);
-  if (INTEGERP (sym) || NILP (SYMBOL_VALUE (sym)))
+		    wordend - wordstart, p - buffer);
+  if (INTEGERP (sym) || NILP (XSYMBOL (sym)->value))
     return value;
 
   if (INTERACTIVE && !EQ (minibuf_window, selected_window))
@@ -320,7 +332,7 @@ Returns the abbrev symbol, if expansion took place.")
 
   /* If this abbrev has an expansion, delete the abbrev
      and insert the expansion.  */
-  expansion = SYMBOL_VALUE (sym);
+  expansion = XSYMBOL (sym)->value;
   if (STRINGP (expansion))
     {
       SET_PT (wordstart);
@@ -406,7 +418,7 @@ is not undone.")
       Lisp_Object val;
       int zv_before;
 
-      val = SYMBOL_VALUE (Vlast_abbrev);
+      val = XSYMBOL (Vlast_abbrev)->value;
       if (!STRINGP (val))
 	error ("value of abbrev-symbol must be a string");
       zv_before = ZV;
@@ -428,13 +440,13 @@ write_abbrev (sym, stream)
      Lisp_Object sym, stream;
 {
   Lisp_Object name;
-  if (NILP (SYMBOL_VALUE (sym)))
+  if (NILP (XSYMBOL (sym)->value))
     return;
   insert ("    (", 5);
   XSETSTRING (name, XSYMBOL (sym)->name);
   Fprin1 (name, stream);
   insert (" ", 1);
-  Fprin1 (SYMBOL_VALUE (sym), stream);
+  Fprin1 (XSYMBOL (sym)->value, stream);
   insert (" ", 1);
   Fprin1 (XSYMBOL (sym)->function, stream);
   insert (" ", 1);
@@ -448,14 +460,14 @@ describe_abbrev (sym, stream)
 {
   Lisp_Object one;
 
-  if (NILP (SYMBOL_VALUE (sym)))
+  if (NILP (XSYMBOL (sym)->value))
     return;
   one = make_number (1);
   Fprin1 (Fsymbol_name (sym), stream);
   Findent_to (make_number (15), one);
   Fprin1 (XSYMBOL (sym)->plist, stream);
   Findent_to (make_number (20), one);
-  Fprin1 (SYMBOL_VALUE (sym), stream);
+  Fprin1 (XSYMBOL (sym)->value, stream);
   if (!NILP (XSYMBOL (sym)->function))
     {
       Findent_to (make_number (45), one);
