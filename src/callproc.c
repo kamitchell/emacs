@@ -103,8 +103,9 @@ extern char **environ;
 #endif
 #endif
 
-Lisp_Object Vexec_path, Vexec_directory, Vexec_suffixes;
-Lisp_Object Vdata_directory, Vdoc_directory;
+#define max(a, b) ((a) > (b) ? (a) : (b))
+
+Lisp_Object Vexec_path, Vexec_directory, Vdata_directory, Vdoc_directory;
 Lisp_Object Vconfigure_info_directory;
 Lisp_Object Vtemp_file_name_pattern;
 
@@ -252,7 +253,7 @@ If you quit, the process is killed with SIGINT, or SIGKILL if you quit again.")
 #ifndef subprocesses
   /* Without asynchronous processes we cannot have BUFFER == 0.  */
   if (nargs >= 3 
-      && (INTEGERP (CONSP (args[2]) ? XCAR (args[2]) : args[2])))
+      && (FIXNUMP (CONSP (args[2]) ? XCAR (args[2]) : args[2])))
     error ("Operating system cannot handle asynchronous subprocesses");
 #endif /* subprocesses */
 
@@ -326,7 +327,7 @@ If you quit, the process is killed with SIGINT, or SIGKILL if you quit again.")
 
       if (!(EQ (buffer, Qnil)
 	    || EQ (buffer, Qt)
-	    || INTEGERP (buffer)))
+	    || FIXNUMP (buffer)))
 	{
 	  Lisp_Object spec_buffer;
 	  spec_buffer = buffer;
@@ -379,7 +380,7 @@ If you quit, the process is killed with SIGINT, or SIGKILL if you quit again.")
     struct gcpro gcpro1;
 
     GCPRO1 (current_dir);
-    openp (Vexec_path, args[0], Vexec_suffixes, &path, 1);
+    openp (Vexec_path, args[0], EXEC_SUFFIXES, &path, 1);
     UNGCPRO;
   }
   if (NILP (path))
@@ -458,18 +459,13 @@ If you quit, the process is killed with SIGINT, or SIGKILL if you quit again.")
   fd[1] = outfilefd;
 #endif /* macintosh */
 
-  if (INTEGERP (buffer))
+  if (FIXNUMP (buffer))
     fd[1] = emacs_open (NULL_DEVICE, O_WRONLY, 0), fd[0] = -1;
   else
     {
 #ifndef MSDOS
 #ifndef macintosh
-      errno = 0;
-      if (pipe (fd) == -1)
-	{
-	  emacs_close (filefd);
-	  report_file_error ("Creating process pipe", Qnil);
-	}
+      pipe (fd);
 #endif
 #endif
 #if 0
@@ -651,7 +647,7 @@ If you quit, the process is killed with SIGINT, or SIGKILL if you quit again.")
       report_file_error ("Doing vfork", Qnil);
     }
 
-  if (INTEGERP (buffer))
+  if (FIXNUMP (buffer))
     {
       if (fd[0] >= 0)
 	emacs_close (fd[0]);
@@ -670,10 +666,10 @@ If you quit, the process is killed with SIGINT, or SIGKILL if you quit again.")
 #if defined(MSDOS) || defined(macintosh)
   /* MSDOS needs different cleanup information.  */
   record_unwind_protect (call_process_cleanup,
-			 Fcons (make_number (fd[0]), build_string (tempfile)));
+			 Fcons (make_fixnum (fd[0]), build_string (tempfile)));
 #else
   record_unwind_protect (call_process_cleanup,
-			 Fcons (make_number (fd[0]), make_number (pid)));
+			 Fcons (make_fixnum (fd[0]), make_fixnum (pid)));
 #endif /* not MSDOS and not macintosh */
 
 
@@ -926,7 +922,7 @@ If you quit, the process is killed with SIGINT, or SIGKILL if you quit again.")
       TEMP_SET_PT_BOTH (pt_orig, pt_byte_orig);
       if (SYMBOLP (process_coding.post_read_conversion)
 	  && !NILP (Ffboundp (process_coding.post_read_conversion)))
-	call1 (process_coding.post_read_conversion, make_number (inserted));
+	call1 (process_coding.post_read_conversion, make_fixnum (inserted));
 
       Vlast_coding_system_used = process_coding.symbol;
 
@@ -934,7 +930,7 @@ If you quit, the process is killed with SIGINT, or SIGKILL if you quit again.")
 	 coding-system used to decode the process output.  */
       if (inherit_process_coding_system)
 	call1 (intern ("after-insert-file-set-buffer-file-coding-system"),
-	       make_number (total_read));
+	       make_fixnum (total_read));
 
       unbind_to (post_read_count, Qnil);
     }
@@ -956,7 +952,7 @@ If you quit, the process is killed with SIGINT, or SIGKILL if you quit again.")
   if (synch_process_death)
     return code_convert_string_norecord (build_string (synch_process_death),
 					 Vlocale_coding_system, 0);
-  return make_number (synch_process_retcode);
+  return make_fixnum (synch_process_retcode);
 }
 #endif
 
@@ -1311,6 +1307,10 @@ child_setup (in, out, err, new_argv, set_pgrp, current_dir)
   /* setpgrp_of_tty is incorrect here; it uses input_fd.  */
   EMACS_SET_TTY_PGRP (0, &pid);
 
+#ifdef vipc
+  something missing here;
+#endif /* vipc */
+
 #ifdef MSDOS
   pid = run_msdos_command (new_argv, pwd_var + 4, in, out, err, env);
   xfree (pwd_var);
@@ -1586,11 +1586,6 @@ Initialized from the SHELL environment variable.");
     "*List of directories to search programs to run in subprocesses.\n\
 Each element is a string (directory name) or nil (try default directory).");
 
-  DEFVAR_LISP ("exec-suffixes", &Vexec_suffixes,
-    "*List of suffixes to try to find executable file names.\n\
-Each element is a string");
-  Vexec_suffixes = Qnil;
-
   DEFVAR_LISP ("exec-directory", &Vexec_directory,
     "Directory for executables for Emacs to invoke.\n\
 More generally, this includes any architecture-dependent files\n\
@@ -1619,8 +1614,6 @@ This is used by `call-process-region'.");
   DEFVAR_LISP ("process-environment", &Vprocess_environment,
     "List of environment variables for subprocesses to inherit.\n\
 Each element should be a string of the form ENVVARNAME=VALUE.\n\
-If multiple entries define the same variable, the first one always\n\
-takes precedence.\n\
 The environment which Emacs inherits is placed in this variable\n\
 when Emacs starts.");
 
