@@ -233,7 +233,7 @@ the decimal key on the keypad is mapped to DECIMAL instead of `.'"
 	 (bind
 	  (cond
 	   ((or (eq setup 'numeric)
-		(char-valid-p setup))
+		(characterp setup))
 	    (if (eq decimal 'numeric)
 		(setq decimal nil))
 	    (vector (or decimal ?.) ?0 ?1 ?2 ?3 ?4 ?5 ?6 ?7 ?8 ?9))
@@ -271,5 +271,4 @@ the decimal key on the keypad is mapped to DECIMAL instead of `.'"
 
       (setq i (1+ i)))))
 
-;;; arch-tag: 0899d2bd-9e12-4b4e-9aef-d0014d3b6414
 ;;; keypad.el ends here
