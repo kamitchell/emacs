@@ -24,7 +24,7 @@
 # script may need modifying in sync with changes made here.  Try to
 # avoid shell-ism because the DOS build has to use the DOS shell.
 
-# Don't try to replace the cpp processing using autoconf facilities,
+# Don't try to replace the ccp processing using autoconf facilities,
 # says rms.
 
 # Here are the things that we expect ../configure to edit.
@@ -142,6 +142,12 @@ CC = C_COMPILER
 #ifndef LIB_MATH
 #  define LIB_MATH -lm
 #endif /* LIB_MATH */
+
+#ifdef HAVE_LIBGMP
+#  ifndef LIB_GMP
+#    define LIB_GMP -lgmp
+#  endif
+#endif
 
 /* Some s/SYSTEM.h files define this to request special switches in ld.  */
 #ifndef LD_SWITCH_SYSTEM
@@ -648,7 +654,6 @@ otherobj= $(termcapobj) lastfile.o $(mallocobj) $(allocaobj) $(widgetobj) $(LIBO
 lisp= \
 	${lispsource}abbrev.elc \
 	${lispsource}buff-menu.elc \
-	${lispsource}button.elc \
 	${lispsource}byte-run.elc \
 	${lispsource}cus-start.el \
 	${lispsource}custom.elc \
@@ -667,7 +672,7 @@ lisp= \
 	${lispsource}isearch.elc \
 	${lispsource}loadup.el \
 	${lispsource}loaddefs.el \
-	${lispsource}bindings.elc \
+	${lispsource}bindings.el \
 	${lispsource}map-ynp.elc \
 	${lispsource}menu-bar.elc \
 	${lispsource}international/mule.elc \
@@ -675,13 +680,6 @@ lisp= \
 	${lispsource}international/mule-cmds.elc \
 	${lispsource}international/characters.elc \
 	${lispsource}international/utf-8.elc \
-	${lispsource}international/latin-1.el \
-	${lispsource}international/latin-2.el \
-	${lispsource}international/latin-3.el \
-	${lispsource}international/latin-4.el \
-	${lispsource}international/latin-5.el \
-	${lispsource}international/latin-8.el \
-	${lispsource}international/latin-9.el \
 	${lispsource}case-table.elc \
 	${lispsource}language/chinese.elc \
 	${lispsource}language/cyrillic.elc \
@@ -729,11 +727,9 @@ lisp= \
 shortlisp= \
 	../lisp/abbrev.elc \
 	../lisp/buff-menu.elc \
-	../lisp/button.elc \
 	../lisp/byte-run.elc \
 	../lisp/cus-start.el \
 	../lisp/custom.elc \
-	../lisp/emacs-lisp/backquote.elc \
 	../lisp/emacs-lisp/lisp-mode.elc \
 	../lisp/emacs-lisp/lisp.elc \
 	../lisp/facemenu.elc \
@@ -747,21 +743,12 @@ shortlisp= \
 	../lisp/isearch.elc \
 	../lisp/loadup.el \
 	../lisp/loaddefs.el \
-	../lisp/bindings.elc \
+	../lisp/bindings.el \
 	../lisp/map-ynp.elc \
-	../lisp/env.elc \
 	../lisp/international/mule.elc \
 	../lisp/international/mule-conf.el \
 	../lisp/international/mule-cmds.elc \
 	../lisp/international/characters.elc \
-	../lisp/international/utf-8.elc \
-	../lisp/international/latin-1.el \
-	../lisp/international/latin-2.el \
-	../lisp/international/latin-3.el \
-	../lisp/international/latin-4.el \
-	../lisp/international/latin-5.el \
-	../lisp/international/latin-8.el \
-	../lisp/international/latin-9.el \
 	../lisp/case-table.elc \
 	../lisp/language/chinese.elc \
 	../lisp/language/cyrillic.elc \
@@ -782,7 +769,6 @@ shortlisp= \
 	../lisp/language/tibetan.elc \
 	../lisp/language/vietnamese.elc \
 	../lisp/language/misc-lang.elc \
-	../lisp/menu-bar.elc \
 	../lisp/paths.el \
 	../lisp/register.elc \
 	../lisp/replace.elc \
@@ -805,7 +791,7 @@ shortlisp= \
    We use ../lisp/ to start the file names
    to reduce the size of the argument list for make-docfile
    for the sake of systems which can't handle large ones.  */
-SOME_MACHINE_LISP = ${dotdot}/lisp/mouse.elc \
+SOME_MACHINE_LISP = ${dotdot}/lisp/menu-bar.elc ${dotdot}/lisp/mouse.elc \
   ${dotdot}/lisp/select.elc ${dotdot}/lisp/scroll-bar.elc \
   ${dotdot}/lisp/vmsproc.elc ${dotdot}/lisp/vms-patch.elc \
   ${dotdot}/lisp/ls-lisp.elc ${dotdot}/lisp/dos-fns.elc \
@@ -820,7 +806,7 @@ SOME_MACHINE_LISP = ${dotdot}/lisp/mouse.elc \
    with GCC, we might need gnulib again after them.  */
 LIBES = $(LOADLIBES) $(LIBS) $(LIBX) $(LIBSOUND) \
    LIBS_SYSTEM LIBS_MACHINE LIBS_TERMCAP \
-   LIBS_DEBUG $(GETLOADAVG_LIBS) $(GNULIB_VAR) LIB_MATH LIB_STANDARD \
+   LIBS_DEBUG $(GETLOADAVG_LIBS) $(GNULIB_VAR) LIB_MATH LIB_STANDARD LIB_GMP \
    $(GNULIB_VAR)
 
 /* Enable recompilation of certain other files depending on system type.  */
@@ -1121,7 +1107,7 @@ xmenu.o: xmenu.c xterm.h termhooks.h window.h dispextern.h frame.h keyboard.h \
    $(config_h)
 xterm.o: xterm.c xterm.h termhooks.h termopts.h termchar.h window.h \
   dispextern.h frame.h disptab.h blockinput.h atimer.h systime.h syssignal.h \
-  keyboard.h gnu.h charset.h ccl.h fontset.h composite.h \
+  keyboard.h gnu.h sink.h sinkmask.h charset.h ccl.h fontset.h composite.h \
   coding.h $(config_h)
 xselect.o: xselect.c dispextern.h frame.h xterm.h blockinput.h charset.h \
   coding.h ccl.h buffer.h atimer.h systime.h $(config_h)
@@ -1191,22 +1177,16 @@ relock:
 
 /* Arrange to make a tags table TAGS-LISP for ../lisp,
    plus TAGS for the C files, which includes ../lisp/TAGS by reference.  */
-
 ctagsfiles1 = [xyzXYZ]*.[hc] 
 ctagsfiles2 = [a-wA-W]*.[hc]
-
-TAGS: $(srcdir)/$(ctagsfiles1) $(srcdir)/$(ctagsfiles2)
+TAGS: $(srcdir)/$(ctagsfiles)
 	../lib-src/etags --include=TAGS-LISP --include=${lwlibdir}/TAGS \
 	  --regex='/[ 	]*DEFVAR_[A-Z_ 	(]+"\([^"]+\)"/' \
 	  $(srcdir)/$(ctagsfiles1) $(srcdir)/$(ctagsfiles2)
 frc:
 TAGS-LISP: frc
 	$(MAKE) -f ${lispsource}Makefile TAGS-LISP ETAGS=../lib-src/etags
-
-$(lwlibdir)TAGS:
-	(cd $(lwlibdir); $(MAKE) -f $(lwlibdir)Makefile tags ETAGS=../lib-src/etags)
-
-tags: TAGS TAGS-LISP $(lwlibdir)TAGS
+tags: TAGS TAGS-LISP
 .PHONY: tags
 
 
@@ -1220,18 +1200,10 @@ bootstrap: bootstrap-emacs
 bootstrap-temacs: 
 	LC_ALL=C $(MAKE) $(MFLAGS) temacs ALL_CFLAGS="$(ALL_CFLAGS) -DPURESIZE=5000000 -I../src"
 
-/* Build a DOC file.  */
-
-bootstrap-doc: ${libsrc}make-docfile
-	-rm -f ${etc}DOC
-	els=`echo ${shortlisp} ${SOME_MACHINE_LISP} \
-		| sed -e "s/\\.elc/.el/g"`; \
-	${libsrc}make-docfile -d ${srcdir} $$els ${obj} > ${etc}DOC
-
 /* Dump an Emacs executable named bootstrap-emacs containing the 
    files from loadup.el in source form.  */
 
-bootstrap-emacs: bootstrap-temacs bootstrap-doc
+bootstrap-emacs: bootstrap-temacs
 #ifdef CANNOT_DUMP
 	ln temacs bootstrap-emacs
 #else
