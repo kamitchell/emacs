@@ -1,7 +1,6 @@
 /* Header for composite sequence handler.
    Copyright (C) 1999 Electrotechnical Laboratory, JAPAN.
    Licensed to the Free Software Foundation.
-   Copyright (C) 2001 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -55,7 +54,7 @@ enum composition_method {
 extern Lisp_Object composition_temp;
 
 /* Return 1 iff the composition is already registered.  */
-#define COMPOSITION_REGISTERD_P(prop) INTEGERP (XCAR (prop))
+#define COMPOSITION_REGISTERD_P(prop) FIXNUMP (XCAR (prop))
 
 /* Return ID number of the already registered composition.  */
 #define COMPOSITION_ID(prop) XINT (XCAR (prop))
@@ -85,7 +84,7 @@ extern Lisp_Object composition_temp;
    : (composition_temp = XCDR (XCAR (prop)),				\
       (NILP (composition_temp)						\
        ? COMPOSITION_RELATIVE						\
-       : ((INTEGERP (composition_temp) || STRINGP (composition_temp))	\
+       : ((FIXNUMP (composition_temp) || STRINGP (composition_temp))	\
 	  ? COMPOSITION_WITH_ALTCHARS					\
 	  : COMPOSITION_WITH_RULE_ALTCHARS))))
 
@@ -103,7 +102,7 @@ extern Lisp_Object composition_temp;
 	       (NILP (composition_temp)				\
 		|| STRINGP (composition_temp)			\
 		|| VECTORP (composition_temp)			\
-		|| INTEGERP (composition_temp)			\
+		|| FIXNUMP (composition_temp)			\
 		|| CONSP (composition_temp))))))		\
    && (end - start) == COMPOSITION_LENGTH (prop))
 
@@ -206,7 +205,7 @@ extern void update_compositions P_ ((int, int, int));
 extern void make_composition_value_copy P_ ((Lisp_Object));
 extern void compose_region P_ ((int, int, Lisp_Object, Lisp_Object,
 				Lisp_Object));
-extern void syms_of_composite P_ ((void));
+extern void syms_of_composition P_ ((void));
 extern void compose_text P_ ((int, int, Lisp_Object, Lisp_Object,
 			      Lisp_Object));
 extern void compose_chars_in_text P_ ((int, int, Lisp_Object));
