@@ -35,7 +35,6 @@ Boston, MA 02111-1307, USA.  */
 #include "systty.h"
 #include "systime.h"
 #include "atimer.h"
-#include "keymap.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -56,6 +55,13 @@ Boston, MA 02111-1307, USA.  */
 #include "intervals.h"
 #include "composite.h"
 #include "coding.h"
+
+#ifndef min
+#define min(a,b) ((a) < (b) ? (a) : (b))
+#endif
+#ifndef max
+#define max(a,b) ((a) > (b) ? (a) : (b))
+#endif
 
 #define abs(x)	((x) < 0 ? -(x) : (x))
 
@@ -186,7 +192,6 @@ extern Lisp_Object Vwindow_system;
 
 /* This is display since w32 does not support multiple ones.  */
 struct w32_display_info one_w32_display_info;
-struct w32_display_info *x_display_list;
 
 /* This is a list of cons cells, each of the form (NAME . FONT-LIST-CACHE),
    one for each element of w32_display_list and in the same order.
@@ -1830,7 +1835,7 @@ x_append_stretch_glyph (it, object, width, height, ascent)
    ASCENT must be in the range 0 <= ASCENT <= 100.  */
 
 #define NUMVAL(X)				\
-     ((INTEGERP (X) || FLOATP (X))		\
+     ((FIXNUMP (X) || FLOATP (X))		\
       ? XFLOATINT (X)				\
       : - 1)
 
@@ -2359,7 +2364,7 @@ x_produce_glyphs (it)
 	      && font_info->default_ascent
 	      && CHAR_TABLE_P (Vuse_default_ascent)
 	      && !NILP (Faref (Vuse_default_ascent,
-			       make_number (it->char_to_display))))
+			       make_fixnum (it->char_to_display))))
 	    highest = font_info->default_ascent + boff;
 
 	  /* Draw the first glyph at the normal position.  It may be
@@ -2424,7 +2429,7 @@ x_produce_glyphs (it)
 		  if (font_info && font_info->relative_compose
 		      && (! CHAR_TABLE_P (Vignore_relative_composition)
 			  || NILP (Faref (Vignore_relative_composition,
-					  make_number (ch)))))
+					  make_fixnum (ch)))))
 		    {
 
 		      if (- descent >= font_info->relative_compose)
@@ -4294,8 +4299,6 @@ static void
 x_draw_glyph_string (s)
      struct glyph_string *s;
 {
-  int relief_drawn_p = 0;
-
   /* If S draws into the background of its successor, draw the
      background of the successor first so that S can draw into it.
      This makes S->next use XDrawString instead of XDrawImageString.  */
@@ -4310,19 +4313,6 @@ x_draw_glyph_string (s)
   /* Set up S->gc, set clipping and draw S.  */
   x_set_glyph_string_gc (s);
   x_set_glyph_string_clipping (s);
-
-  /* Draw relief (if any) in advance for char/composition so that the
-     glyph string can be drawn over it.  */
-  if (!s->for_overlaps_p
-      && s->face->box != FACE_NO_BOX
-      && (s->first_glyph->type == CHAR_GLYPH
-	  || s->first_glyph->type == COMPOSITE_GLYPH))
-
-    {
-      x_draw_glyph_string_background (s, 1);
-      x_draw_glyph_string_box (s);
-      relief_drawn_p = 1;
-    }
 
   switch (s->first_glyph->type)
     {
@@ -4412,7 +4402,7 @@ x_draw_glyph_string (s)
         }
 
       /* Draw relief.  */
-      if (!relief_drawn_p && s->face->box != FACE_NO_BOX)
+      if (s->face->box != FACE_NO_BOX)
         x_draw_glyph_string_box (s);
     }
 
@@ -4672,13 +4662,11 @@ x_set_glyph_string_background_width (s, start, last_x)
   struct face *default_face = FACE_FROM_ID (s->f, DEFAULT_FACE_ID);
   
   if (start == s->row->used[s->area]
+      && s->hl == DRAW_NORMAL_TEXT
       && s->area == TEXT_AREA
-      && ((s->hl == DRAW_NORMAL_TEXT
-	   && (s->row->fill_line_p
-	       || s->face->background != default_face->background
-	       || s->face->stipple != default_face->stipple
-	       || s->row->mouse_face_p))
-	  || s->hl == DRAW_MOUSE_FACE))
+      && (s->row->fill_line_p
+	  || s->face->background != default_face->background
+	  || s->face->stipple != default_face->stipple))
     s->extends_to_end_of_line_p = 1;
   
   /* If S extends its face to the end of the line, set its
@@ -6383,7 +6371,7 @@ note_mode_line_highlight (w, x, mode_line_p)
 	  /* If we're on a string with `help-echo' text property,
 	     arrange for the help to be displayed.  This is done by
 	     setting the global variable help_echo to the help string.  */
-	  help = Fget_text_property (make_number (glyph->charpos),
+	  help = Fget_text_property (make_fixnum (glyph->charpos),
 				     Qhelp_echo, glyph->object);
 	  if (!NILP (help))
             {
@@ -6394,13 +6382,13 @@ note_mode_line_highlight (w, x, mode_line_p)
             }
 
 	  /* Change the mouse pointer according to what is under X/Y.  */
-	  map = Fget_text_property (make_number (glyph->charpos),
+	  map = Fget_text_property (make_fixnum (glyph->charpos),
 				    Qlocal_map, glyph->object);
 	  if (KEYMAPP (map))
 	    cursor = f->output_data.w32->nontext_cursor;
 	  else
 	    {
-	      map = Fget_text_property (make_number (glyph->charpos),
+	      map = Fget_text_property (make_fixnum (glyph->charpos),
 					Qkeymap, glyph->object);
 	      if (KEYMAPP (map))
 		cursor = f->output_data.w32->nontext_cursor;
@@ -6626,7 +6614,7 @@ note_mouse_highlight (f, x, y)
                 XSETINT (end, (BUF_Z (XBUFFER (w->buffer))
                                - XFASTINT (w->window_end_pos)));
                 before
-                  = Fprevious_single_property_change (make_number (pos + 1),
+                  = Fprevious_single_property_change (make_fixnum (pos + 1),
                                                       Qmouse_face,
                                                       w->buffer, beginning);
                 after
@@ -6682,7 +6670,7 @@ note_mouse_highlight (f, x, y)
 		  || (BUFFERP (glyph->object)
 		      && glyph->charpos >= BEGV
 		      && glyph->charpos < ZV))
-                help = Fget_text_property (make_number (glyph->charpos),
+                help = Fget_text_property (make_fixnum (glyph->charpos),
                                            Qhelp_echo, glyph->object);
 	    
               if (!NILP (help))
@@ -7095,9 +7083,9 @@ show_mouse_face (dpyinfo, draw)
 
       if (end_hpos > start_hpos)
         {
+          row->mouse_face_p = draw == DRAW_MOUSE_FACE;
           x_draw_glyphs (w, start_x, row, TEXT_AREA,
                          start_hpos, end_hpos, draw, NULL, NULL, 0);
-          row->mouse_face_p = draw == DRAW_MOUSE_FACE;
         }
     }
 
@@ -7509,7 +7497,7 @@ x_scroll_bar_create (w, top, left, width, height)
   struct frame *f = XFRAME (WINDOW_FRAME (w));
   HWND hwnd;
   struct scroll_bar *bar
-    = XSCROLL_BAR (Fmake_vector (make_number (SCROLL_BAR_VEC_SIZE), Qnil));
+    = XSCROLL_BAR (Fmake_vector (make_fixnum (SCROLL_BAR_VEC_SIZE), Qnil));
 
   BLOCK_INPUT;
 
@@ -8118,7 +8106,7 @@ w32_read_socket (sd, bufp, numchars, expected)
 		  {
 		    /* We may get paint messages even though the client
 		       area is clipped - these are not expose events. */
-		    DebPrint (("clipped frame %p (%s) got WM_PAINT - ignored\n", f,
+		    DebPrint (("clipped frame %04x (%s) got WM_PAINT\n", f,
 			       XSTRING (f->name)->data));
 		  }
 		else if (f->async_visible != 1)
@@ -8127,7 +8115,7 @@ w32_read_socket (sd, bufp, numchars, expected)
 		    f->async_visible = 1;
 		    f->async_iconified = 0;
 		    SET_FRAME_GARBAGED (f);
-		    DebPrint (("frame %p (%s) reexposed by WM_PAINT\n", f,
+		    DebPrint (("frame %04x (%s) reexposed\n", f,
 			       XSTRING (f->name)->data));
 
 		    /* WM_PAINT serves as MapNotify as well, so report
@@ -8728,7 +8716,7 @@ w32_read_socket (sd, bufp, numchars, expected)
 
 		  if (!FRAME_OBSCURED_P (f))
 		    {
-		      DebPrint (("frame %p (%s) obscured\n", f,
+		      DebPrint (("frame %04x (%s) obscured\n", f,
 				 XSTRING (f->name)->data));
 		    }
 		}
@@ -8740,7 +8728,7 @@ w32_read_socket (sd, bufp, numchars, expected)
 		  if (FRAME_OBSCURED_P (f))
 		    {
 		      SET_FRAME_GARBAGED (f);
-		      DebPrint (("obscured frame %p (%s) found to be visible\n", f,
+		      DebPrint (("frame %04x (%s) reexposed\n", f,
 				 XSTRING (f->name)->data));
 
 		      /* Force a redisplay sooner or later.  */
@@ -10208,10 +10196,6 @@ w32_term_init (display_name, xrm_option, resource_name)
   w32_initialize_display_info (display_name);
 
   dpyinfo = &one_w32_display_info;
-
-  /* Put this display on the chain.  */
-  dpyinfo->next = x_display_list;
-  x_display_list = dpyinfo;
   
   hdc = GetDC (GetDesktopWindow ());
 
@@ -10286,7 +10270,7 @@ x_delete_display (dpyinfo)
 	{
 	  if (EQ (XCAR (XCDR (tail)), dpyinfo->name_list_element))
 	    {
-	      XSETCDR (tail, XCDR (XCDR (tail)));
+	      XCDR (tail) = XCDR (XCDR (tail));
 	      break;
 	    }
 	  tail = XCDR (tail);
@@ -10383,7 +10367,7 @@ w32_initialize ()
 
   /* Initialize input mode: interrupt_input off, no flow control, allow
      8 bit character input, standard quit char.  */
-  Fset_input_mode (Qnil, Qnil, make_number (2), Qnil);
+  Fset_input_mode (Qnil, Qnil, make_fixnum (2), Qnil);
 
   /* Create the window thread - it will terminate itself or when the app terminates */
 

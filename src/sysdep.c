@@ -58,6 +58,8 @@ static int delete_exited_processes;
 #endif
 #endif  /* macintosh */
 
+#define min(x,y) ((x) > (y) ? (y) : (x))
+
 #ifdef WINDOWSNT
 #define read sys_read
 #define write sys_write
@@ -478,17 +480,11 @@ wait_for_termination (pid)
 #else /* neither BSD_SYSTEM nor UNIPLUS: random sysV */
 #ifdef POSIX_SIGNALS    /* would this work for LINUX as well? */
       sigblock (sigmask (SIGCHLD));
-      errno = 0;
-      if (kill (pid, 0) == -1 && errno == ESRCH)
+      if (0 > kill (pid, 0))
 	{
 	  sigunblock (sigmask (SIGCHLD));
 	  break;
 	}
-
-      /* FIXME: Since sigpause is not POSIX and its use is deprecated,
-	 this should probably be `sigsuspend (&empty_mask)', which is
-	 POSIX.  I'm not making that change right away because the
-	 release is nearing.  2001-09-20 gerd.  */
       sigpause (SIGEMPTYMASK);
 #else /* not POSIX_SIGNALS */
 #ifdef HAVE_SYSV_SIGPAUSE
@@ -588,11 +584,6 @@ child_setup_tty (out)
 #endif
   s.main.c_lflag &= ~ECHO;	/* Disable echo */
   s.main.c_lflag |= ISIG;	/* Enable signals */
-  s.main.c_iflag &= ~ICRNL;	/* Disable map of CR to NL on input */
-#ifdef INLCR  /* Just being cautious, since I can't check how
-		 widespread INLCR is--rms.  */
-  s.main.c_iflag &= ~INLCR;	/* Disable map of NL to CR on input */
-#endif
 #ifdef IUCLC
   s.main.c_iflag &= ~IUCLC;	/* Disable downcasing on input.  */
 #endif
@@ -2369,7 +2360,7 @@ init_system_name ()
 	      break;
 	    if (count >= 5)
 	      break;
-	    Fsleep_for (make_number (1), Qnil);
+	    Fsleep_for (make_fixnum (1), Qnil);
 	  }
 	if (hp)
 	  {

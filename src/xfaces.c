@@ -194,7 +194,6 @@ Boston, MA 02111-1307, USA.  */
 #include <config.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#define DOC_STRINGS_IN_COMMENTS
 #include "lisp.h"
 #include "charset.h"
 #include "keyboard.h"
@@ -289,7 +288,11 @@ x_free_gc (f, gc)
 #include <stdio.h>
 #include <ctype.h>
 
+#ifndef max
+#define max(A, B)	((A) > (B) ? (A) : (B))
+#define min(A, B)	((A) < (B) ? (A) : (B))
 #define abs(X)		((X) < 0 ? -(X) : (X))
+#endif
 
 /* Number of pt per inch (from the TeXbook).  */
 
@@ -470,6 +473,10 @@ static int clear_font_table_count;
 
 int face_change_count;
 
+/* Incremented for every change in the `menu' face.  */
+
+int menu_face_change_count;
+
 /* Non-zero means don't display bold text if a face's foreground
    and background colors are the inverse of the default colors of the
    display.   This is a kluge to suppress `bold black' foreground text
@@ -490,10 +497,6 @@ static int npixmaps_allocated;
 static int ngcs;
 #endif
 
-/* Non-zero means the definition of the `menu' face for new frames has
-   been changed.  */
-
-int menu_face_changed_default;
 
 
 /* Function prototypes.  */
@@ -594,7 +597,7 @@ static void sort_fonts P_ ((struct frame *, struct font_name *, int,
 			       int (*cmpfn) P_ ((const void *, const void *))));
 static GC x_create_gc P_ ((struct frame *, unsigned long, XGCValues *));
 static void x_free_gc P_ ((struct frame *, GC));
-static void clear_font_table P_ ((struct x_display_info *));
+static void clear_font_table P_ ((struct frame *));
 
 #ifdef WINDOWSNT
 extern Lisp_Object w32_list_fonts P_ ((struct frame *, Lisp_Object, int, int));
@@ -602,8 +605,6 @@ extern Lisp_Object w32_list_fonts P_ ((struct frame *, Lisp_Object, int, int));
 
 #ifdef USE_X_TOOLKIT
 static void x_update_menu_appearance P_ ((struct frame *));
-
-extern void free_frame_menubar P_ ((struct frame *));
 #endif /* USE_X_TOOLKIT */
 
 #endif /* HAVE_WINDOW_SYSTEM */
@@ -669,8 +670,8 @@ unregister_colors (pixels, n)
 
 
 DEFUN ("dump-colors", Fdump_colors, Sdump_colors, 0, 0, 0,
-       /* Dump currently allocated colors to stderr.  */
-       ())
+  "Dump currently allocated colors and their reference counts to stderr.")
+  ()
 {
   int i, n;
 
@@ -978,14 +979,6 @@ clear_face_cache (clear_fonts_p)
   if (clear_fonts_p
       || ++clear_font_table_count == CLEAR_FONT_TABLE_COUNT)
     {
-      struct x_display_info *dpyinfo;
-      
-      /* Fonts are common for frames on one display, i.e. on
-	 one X screen.  */
-      for (dpyinfo = x_display_list; dpyinfo; dpyinfo = dpyinfo->next)
-	if (dpyinfo->n_fonts > CLEAR_FONT_TABLE_NFONTS)
-	  clear_font_table (dpyinfo);
-      
       /* From time to time see if we can unload some fonts.  This also
 	 frees all realized faces on all frames.  Fonts needed by
 	 faces will be loaded again when faces are realized again.  */
@@ -993,10 +986,13 @@ clear_face_cache (clear_fonts_p)
 
       FOR_EACH_FRAME (tail, frame)
 	{
-	  struct frame *f = XFRAME (frame);
+	  f = XFRAME (frame);
 	  if (FRAME_WINDOW_P (f)
 	      && FRAME_X_DISPLAY_INFO (f)->n_fonts > CLEAR_FONT_TABLE_NFONTS)
-	    free_all_realized_faces (frame);
+	    {
+	      free_all_realized_faces (frame);
+	      clear_font_table (f);
+	    }
 	}
     }
   else
@@ -1017,9 +1013,9 @@ clear_face_cache (clear_fonts_p)
 
 
 DEFUN ("clear-face-cache", Fclear_face_cache, Sclear_face_cache, 0, 1, 0,
-       /* Clear face caches on all frames.
-Optional THOROUGHLY non-nil means try to free unused fonts, too.  */
-       (thoroughly))
+  "Clear face caches on all frames.\n\
+Optional THOROUGHLY non-nil means try to free unused fonts, too.")
+  (thoroughly)
      Lisp_Object thoroughly;
 {
   clear_face_cache (!NILP (thoroughly));
@@ -1033,37 +1029,26 @@ Optional THOROUGHLY non-nil means try to free unused fonts, too.  */
 #ifdef HAVE_WINDOW_SYSTEM
 
 
-/* Remove fonts from the font table of DPYINFO except for the default
-   ASCII fonts of frames on that display.  Called from clear_face_cache
+/* Remove those fonts from the font table of frame F exept for the
+   default ASCII font for the frame.  Called from clear_face_cache
    from time to time.  */
 
 static void
-clear_font_table (dpyinfo)
-     struct x_display_info *dpyinfo;
+clear_font_table (f)
+     struct frame *f;
 {
+  struct x_display_info *dpyinfo = FRAME_X_DISPLAY_INFO (f);
   int i;
 
-  /* Free those fonts that are not used by frames on DPYINFO.  */
+  xassert (FRAME_WINDOW_P (f));
+
+  /* Free those fonts that are not used by the frame F as the default.  */
   for (i = 0; i < dpyinfo->n_fonts; ++i)
     {
       struct font_info *font_info = dpyinfo->font_table + i;
-      Lisp_Object tail, frame;
 
-      /* Check if slot is already free.  */
-      if (font_info->name == NULL)
-	continue;
-
-      /* Don't free a default font of some frame on this display.  */
-      FOR_EACH_FRAME (tail, frame)
-	{
-	  struct frame *f = XFRAME (frame);
-	  if (FRAME_WINDOW_P (f)
-	      && FRAME_X_DISPLAY_INFO (f) == dpyinfo
-	      && font_info->font == FRAME_FONT (f))
-	    break;
-	}
-
-      if (!NILP (tail))
+      if (!font_info->name
+	  || font_info->font == FRAME_FONT (f))
 	continue;
 
       /* Free names.  */
@@ -1098,13 +1083,13 @@ clear_font_table (dpyinfo)
 #ifdef HAVE_WINDOW_SYSTEM
 
 DEFUN ("bitmap-spec-p", Fbitmap_spec_p, Sbitmap_spec_p, 1, 1, 0,
-       /* Value is non-nil if OBJECT is a valid bitmap specification.
-A bitmap specification is either a string, a file name, or a list
-\(WIDTH HEIGHT DATA) where WIDTH is the pixel width of the bitmap,
-HEIGHT is its height, and DATA is a string containing the bits of
-the pixmap.  Bits are stored row by row, each row occupies
-\(WIDTH + 7)/8 bytes.  */
-       (object))
+  "Value is non-nil if OBJECT is a valid bitmap specification.\n\
+A bitmap specification is either a string, a file name, or a list\n\
+(WIDTH HEIGHT DATA) where WIDTH is the pixel width of the bitmap,\n\
+HEIGHT is its height, and DATA is a string containing the bits of\n\
+the pixmap.  Bits are stored row by row, each row occupies\n\
+(WIDTH + 7)/8 bytes.")
+  (object)
      Lisp_Object object;
 {
   int pixmap_p = 0;
@@ -1405,7 +1390,7 @@ tty_color_name (f, idx)
       Lisp_Object coldesc;
 
       XSETFRAME (frame, f);
-      coldesc = call2 (Qtty_color_by_index, make_number (idx), frame);
+      coldesc = call2 (Qtty_color_by_index, make_fixnum (idx), frame);
 
       if (!NILP (coldesc))
 	return XCAR (coldesc);
@@ -1482,10 +1467,10 @@ face_color_supported_p (f, color_name, background_p)
 
 
 DEFUN ("color-gray-p", Fcolor_gray_p, Scolor_gray_p, 1, 2, 0,
-       /* Return non-nil if COLOR is a shade of gray (or white or black).
-FRAME specifies the frame and thus the display for interpreting COLOR.
-If FRAME is nil or omitted, use the selected frame.  */
-       (color, frame))
+  "Return non-nil if COLOR is a shade of gray (or white or black).\n\
+FRAME specifies the frame and thus the display for interpreting COLOR.\n\
+If FRAME is nil or omitted, use the selected frame.")
+   (color, frame)
      Lisp_Object color, frame;
 {
   struct frame *f;
@@ -1499,11 +1484,11 @@ If FRAME is nil or omitted, use the selected frame.  */
 
 DEFUN ("color-supported-p", Fcolor_supported_p,
        Scolor_supported_p, 2, 3, 0,
-       /* Return non-nil if COLOR can be displayed on FRAME.
-BACKGROUND-P non-nil means COLOR is used as a background.
-If FRAME is nil or omitted, use the selected frame.
-COLOR must be a valid color name.  */
-       (color, frame, background_p))
+  "Return non-nil if COLOR can be displayed on FRAME.\n\
+BACKGROUND-P non-nil means COLOR is used as a background.\n\
+If FRAME is nil or omitted, use the selected frame.\n\
+COLOR must be a valid color name.")
+   (color, frame, background_p)
      Lisp_Object frame, color, background_p;
 {
   struct frame *f;
@@ -1646,12 +1631,9 @@ unload_color (f, pixel)
      unsigned long pixel;
 {
 #ifdef HAVE_X_WINDOWS
-  if (pixel != -1)
-    {
-      BLOCK_INPUT;
-      x_free_colors (f, &pixel, 1);
-      UNBLOCK_INPUT;
-    }
+  BLOCK_INPUT;
+  x_free_colors (f, &pixel, 1);
+  UNBLOCK_INPUT;
 #endif
 }
 
@@ -2488,7 +2470,7 @@ sorted_font_list (f, pattern, cmpfn, fonts)
 
   /* Get the list of fonts matching pattern.  100 should suffice.  */
   nfonts = DEFAULT_FONT_LIST_LIMIT;
-  if (INTEGERP (Vfont_list_limit) && XINT (Vfont_list_limit) > 0)
+  if (FIXNUMP (Vfont_list_limit) && XINT (Vfont_list_limit) > 0)
     nfonts = XFASTINT (Vfont_list_limit);
 
   *fonts = (struct font_name *) xmalloc (nfonts * sizeof **fonts);
@@ -2684,7 +2666,7 @@ remove_duplicates (list)
     {
       Lisp_Object next = XCDR (tail);
       if (!NILP (Fequal (XCAR (next), XCAR (tail))))
-	XSETCDR (tail, XCDR (next));
+	XCDR (tail) = XCDR (next);
       else
 	tail = XCDR (tail);
     }
@@ -2692,22 +2674,22 @@ remove_duplicates (list)
 
 
 DEFUN ("x-family-fonts", Fx_family_fonts, Sx_family_fonts, 0, 2, 0,
-       /* Return a list of available fonts of family FAMILY on FRAME.
-If FAMILY is omitted or nil, list all families.
-Otherwise, FAMILY must be a string, possibly containing wildcards
-`?' and `*'.
-If FRAME is omitted or nil, use the selected frame.
-Each element of the result is a vector [FAMILY WIDTH POINT-SIZE WEIGHT
-SLANT FIXED-P FULL REGISTRY-AND-ENCODING].
-FAMILY is the font family name.  POINT-SIZE is the size of the
-font in 1/10 pt.  WIDTH, WEIGHT, and SLANT are symbols describing the
-width, weight and slant of the font.  These symbols are the same as for
-face attributes.  FIXED-P is non-nil if the font is fixed-pitch.
-FULL is the full name of the font, and REGISTRY-AND-ENCODING is a string
-giving the registry and encoding of the font.
-The result list is sorted according to the current setting of
-the face font sort order.  */
-       (family, frame))
+  "Return a list of available fonts of family FAMILY on FRAME.\n\
+If FAMILY is omitted or nil, list all families.\n\
+Otherwise, FAMILY must be a string, possibly containing wildcards\n\
+`?' and `*'.\n\
+If FRAME is omitted or nil, use the selected frame.\n\
+Each element of the result is a vector [FAMILY WIDTH POINT-SIZE WEIGHT\n\
+SLANT FIXED-P FULL REGISTRY-AND-ENCODING].\n\
+FAMILY is the font family name.  POINT-SIZE is the size of the\n\
+font in 1/10 pt.  WIDTH, WEIGHT, and SLANT are symbols describing the\n\
+width, weight and slant of the font.  These symbols are the same as for\n\
+face attributes.  FIXED-P is non-nil if the font is fixed-pitch.\n\
+FULL is the full name of the font, and REGISTRY-AND-ENCODING is a string\n\
+giving the registry and encoding of the font.\n\
+The result list is sorted according to the current setting of\n\
+the face font sort order.")
+  (family, frame)
      Lisp_Object family, frame;
 {
   struct frame *f = check_x_frame (frame);
@@ -2724,12 +2706,12 @@ the face font sort order.  */
   nfonts = font_list (f, Qnil, family, Qnil, &fonts);
   for (i = nfonts - 1; i >= 0; --i)
     {
-      Lisp_Object v = Fmake_vector (make_number (8), Qnil);
+      Lisp_Object v = Fmake_vector (make_fixnum (8), Qnil);
       char *tem;
 
       ASET (v, 0, build_string (fonts[i].fields[XLFD_FAMILY]));
       ASET (v, 1, xlfd_symbolic_swidth (fonts + i));
-      ASET (v, 2, make_number (xlfd_point_size (f, fonts + i)));
+      ASET (v, 2, make_fixnum (xlfd_point_size (f, fonts + i)));
       ASET (v, 3, xlfd_symbolic_weight (fonts + i));
       ASET (v, 4, xlfd_symbolic_slant (fonts + i));
       ASET (v, 5, xlfd_fixed_p (fonts + i) ? Qt : Qnil);
@@ -2752,12 +2734,12 @@ the face font sort order.  */
 
 DEFUN ("x-font-family-list", Fx_font_family_list, Sx_font_family_list,
        0, 1, 0,
-       /* Return a list of available font families on FRAME.
-If FRAME is omitted or nil, use the selected frame.
-Value is a list of conses (FAMILY . FIXED-P) where FAMILY
-is a font family, and FIXED-P is non-nil if fonts of that family
-are fixed-pitch.  */
-       (frame))
+  "Return a list of available font families on FRAME.\n\
+If FRAME is omitted or nil, use the selected frame.\n\
+Value is a list of conses (FAMILY . FIXED-P) where FAMILY\n\
+is a font family, and FIXED-P is non-nil if fonts of that family\n\
+are fixed-pitch.")
+  (frame)
      Lisp_Object frame;
 {
   struct frame *f = check_x_frame (frame);
@@ -2772,7 +2754,7 @@ are fixed-pitch.  */
      fonts until we have them all.  */
   for (limit = 500;;)
     {
-      specbind (intern ("font-list-limit"), make_number (limit));
+      specbind (intern ("font-list-limit"), make_fixnum (limit));
       nfonts = font_list (f, Qnil, Qnil, Qnil, &fonts);
 
       if (nfonts == limit)
@@ -2799,26 +2781,26 @@ are fixed-pitch.  */
 
 
 DEFUN ("x-list-fonts", Fx_list_fonts, Sx_list_fonts, 1, 5, 0,
-       /* Return a list of the names of available fonts matching PATTERN.
-If optional arguments FACE and FRAME are specified, return only fonts
-the same size as FACE on FRAME.
-PATTERN is a string, perhaps with wildcard characters;
-  the * character matches any substring, and
-  the ? character matches any single character.
-  PATTERN is case-insensitive.
-FACE is a face name--a symbol.
-
-The return value is a list of strings, suitable as arguments to
-set-face-font.
-
-Fonts Emacs can't use may or may not be excluded
-even if they match PATTERN and FACE.
-The optional fourth argument MAXIMUM sets a limit on how many
-fonts to match.  The first MAXIMUM fonts are reported.
-The optional fifth argument WIDTH, if specified, is a number of columns
-occupied by a character of a font.  In that case, return only fonts
-the WIDTH times as wide as FACE on FRAME.  */
-       (pattern, face, frame, maximum, width))
+  "Return a list of the names of available fonts matching PATTERN.\n\
+If optional arguments FACE and FRAME are specified, return only fonts\n\
+the same size as FACE on FRAME.\n\
+PATTERN is a string, perhaps with wildcard characters;\n\
+  the * character matches any substring, and\n\
+  the ? character matches any single character.\n\
+  PATTERN is case-insensitive.\n\
+FACE is a face name--a symbol.\n\
+\n\
+The return value is a list of strings, suitable as arguments to\n\
+set-face-font.\n\
+\n\
+Fonts Emacs can't use may or may not be excluded\n\
+even if they match PATTERN and FACE.\n\
+The optional fourth argument MAXIMUM sets a limit on how many\n\
+fonts to match.  The first MAXIMUM fonts are reported.\n\
+The optional fifth argument WIDTH, if specified, is a number of columns\n\
+occupied by a character of a font.  In that case, return only fonts\n\
+the WIDTH times as wide as FACE on FRAME.")
+  (pattern, face, frame, maximum, width)
     Lisp_Object pattern, face, frame, maximum, width;
 {
   struct frame *f;
@@ -2932,9 +2914,9 @@ check_lface_attrs (attrs)
   xassert (UNSPECIFIEDP (attrs[LFACE_SWIDTH_INDEX])
 	   || SYMBOLP (attrs[LFACE_SWIDTH_INDEX]));
   xassert (UNSPECIFIEDP (attrs[LFACE_AVGWIDTH_INDEX])
-	   || INTEGERP (attrs[LFACE_AVGWIDTH_INDEX]));
+	   || FIXNUMP (attrs[LFACE_AVGWIDTH_INDEX]));
   xassert (UNSPECIFIEDP (attrs[LFACE_HEIGHT_INDEX])
-	   || INTEGERP (attrs[LFACE_HEIGHT_INDEX])
+	   || FIXNUMP (attrs[LFACE_HEIGHT_INDEX])
 	   || FLOATP (attrs[LFACE_HEIGHT_INDEX])
 	   || FUNCTIONP (attrs[LFACE_HEIGHT_INDEX]));
   xassert (UNSPECIFIEDP (attrs[LFACE_WEIGHT_INDEX])
@@ -2953,7 +2935,7 @@ check_lface_attrs (attrs)
   xassert (UNSPECIFIEDP (attrs[LFACE_BOX_INDEX])
 	   || SYMBOLP (attrs[LFACE_BOX_INDEX])
 	   || STRINGP (attrs[LFACE_BOX_INDEX])
-	   || INTEGERP (attrs[LFACE_BOX_INDEX])
+	   || FIXNUMP (attrs[LFACE_BOX_INDEX])
 	   || CONSP (attrs[LFACE_BOX_INDEX]));
   xassert (UNSPECIFIEDP (attrs[LFACE_INVERSE_INDEX])
 	   || SYMBOLP (attrs[LFACE_INVERSE_INDEX]));
@@ -3186,7 +3168,7 @@ set_lface_from_font_name (f, lface, fontname, force_p, may_fail_p)
       else
 	pt = pixel_point_size (f, font_info->height * 10);
       xassert (pt > 0);
-      LFACE_HEIGHT (lface) = make_number (pt);
+      LFACE_HEIGHT (lface) = make_fixnum (pt);
     }
 
   if (force_p || UNSPECIFIEDP (LFACE_SWIDTH (lface)))
@@ -3196,7 +3178,7 @@ set_lface_from_font_name (f, lface, fontname, force_p, may_fail_p)
   if (force_p || UNSPECIFIEDP (LFACE_AVGWIDTH (lface)))
     LFACE_AVGWIDTH (lface)
       = (have_xlfd_p
-	 ? make_number (font.numeric[XLFD_AVGWIDTH])
+	 ? make_fixnum (font.numeric[XLFD_AVGWIDTH])
 	 : Qunspecified);
 
   if (force_p || UNSPECIFIEDP (LFACE_WEIGHT (lface)))
@@ -3229,7 +3211,7 @@ merge_face_heights (from, to, invalid, gcpro)
 {
   int result = 0;
 
-  if (INTEGERP (from))
+  if (FIXNUMP (from))
     result = XINT (from);
   else if (NUMBERP (from))
     result = XFLOATINT (from) * XINT (to);
@@ -3238,7 +3220,7 @@ merge_face_heights (from, to, invalid, gcpro)
     {
       if (EQ (XCAR(from), Qplus) || EQ (XCAR(from), Qminus))
 	{
-	  if (INTEGERP (XCAR (XCDR (from))))
+	  if (FIXNUMP (XCAR (XCDR (from))))
 	    {
 	      int inc = XINT (XCAR (XCDR (from)));
 	      if (EQ (XCAR (from), Qminus))
@@ -3274,7 +3256,7 @@ merge_face_heights (from, to, invalid, gcpro)
     }
 
   if (result > 0)
-    return make_number (result);
+    return make_fixnum (result);
   else
     return invalid;
 }
@@ -3320,7 +3302,7 @@ merge_face_vectors (f, from, to, cycle_check)
 
   for (i = 1; i < LFACE_VECTOR_SIZE; ++i)
     if (!UNSPECIFIEDP (from[i]))
-      if (i == LFACE_HEIGHT_INDEX && !INTEGERP (from[i]))
+      if (i == LFACE_HEIGHT_INDEX && !FIXNUMP (from[i]))
 	to[i] = merge_face_heights (from[i], to[i], to[i], cycle_check);
       else
 	to[i] = from[i];
@@ -3346,10 +3328,10 @@ merge_face_vectors (f, from, to, cycle_check)
 
 #define CYCLE_CHECK(check, el, suspicious)	\
   (NILP (check)					\
-   ? make_number (0)				\
-   : (INTEGERP (check)				\
+   ? make_fixnum (0)				\
+   : (FIXNUMP (check)				\
       ? (XFASTINT (check) < (suspicious)	\
-	 ? make_number (XFASTINT (check) + 1)	\
+	 ? make_fixnum (XFASTINT (check) + 1)	\
 	 : Fcons (el, Qnil))			\
       : (!NILP (Fmemq ((el), (check)))		\
 	 ? Qnil					\
@@ -3526,8 +3508,8 @@ merge_face_vector_with_property (f, to, prop)
 	      else if (EQ (keyword, QCbox))
 		{
 		  if (EQ (value, Qt))
-		    value = make_number (1);
-		  if (INTEGERP (value)
+		    value = make_fixnum (1);
+		  if (FIXNUMP (value)
 		      || STRINGP (value)
 		      || CONSP (value)
 		      || NILP (value))
@@ -3624,12 +3606,12 @@ merge_face_vector_with_property (f, to, prop)
 
 DEFUN ("internal-make-lisp-face", Finternal_make_lisp_face,
        Sinternal_make_lisp_face, 1, 2, 0,
-       /* Make FACE, a symbol, a Lisp face with all attributes nil.
-If FACE was not known as a face before, create a new one.
-If optional argument FRAME is specified, make a frame-local face
-for that frame.  Otherwise operate on the global face definition.
-Value is a vector of face attributes.  */
-       (face, frame))
+  "Make FACE, a symbol, a Lisp face with all attributes nil.\n\
+If FACE was not known as a face before, create a new one.\n\
+If optional argument FRAME is specified, make a frame-local face\n\
+for that frame.  Otherwise operate on the global face definition.\n\
+Value is a vector of face attributes.")
+  (face, frame)
      Lisp_Object face, frame;
 {
   Lisp_Object global_lface, lface;
@@ -3651,7 +3633,7 @@ Value is a vector of face attributes.  */
   /* Add a global definition if there is none.  */
   if (NILP (global_lface))
     {
-      global_lface = Fmake_vector (make_number (LFACE_VECTOR_SIZE),
+      global_lface = Fmake_vector (make_fixnum (LFACE_VECTOR_SIZE),
 				   Qunspecified);
       AREF (global_lface, 0) = Qface;
       Vface_new_frame_defaults = Fcons (Fcons (face, global_lface),
@@ -3670,7 +3652,7 @@ Value is a vector of face attributes.  */
 	}
 
       lface_id_to_name[next_lface_id] = face;
-      Fput (face, Qface, make_number (next_lface_id));
+      Fput (face, Qface, make_fixnum (next_lface_id));
       ++next_lface_id;
     }
   else if (f == NULL)
@@ -3682,7 +3664,7 @@ Value is a vector of face attributes.  */
     {
       if (NILP (lface))
 	{
-	  lface = Fmake_vector (make_number (LFACE_VECTOR_SIZE),
+	  lface = Fmake_vector (make_fixnum (LFACE_VECTOR_SIZE),
 				Qunspecified);
 	  AREF (lface, 0) = Qface;
 	  f->face_alist = Fcons (Fcons (face, lface), f->face_alist);
@@ -3702,11 +3684,11 @@ Value is a vector of face attributes.  */
 
 DEFUN ("internal-lisp-face-p", Finternal_lisp_face_p,
        Sinternal_lisp_face_p, 1, 2, 0,
-       /* Return non-nil if FACE names a face.
-If optional second parameter FRAME is non-nil, check for the
-existence of a frame-local face with name FACE on that frame.
-Otherwise check for the existence of a global face.  */
-       (face, frame))
+  "Return non-nil if FACE names a face.\n\
+If optional second parameter FRAME is non-nil, check for the\n\
+existence of a frame-local face with name FACE on that frame.\n\
+Otherwise check for the existence of a global face.")
+  (face, frame)
      Lisp_Object face, frame;
 {
   Lisp_Object lface;
@@ -3725,14 +3707,14 @@ Otherwise check for the existence of a global face.  */
 
 DEFUN ("internal-copy-lisp-face", Finternal_copy_lisp_face,
        Sinternal_copy_lisp_face, 4, 4, 0,
-       /* Copy face FROM to TO.
-If FRAME it t, copy the global face definition of FROM to the
-global face definition of TO.  Otherwise, copy the frame-local
-definition of FROM on FRAME to the frame-local definition of TO
-on NEW-FRAME, or FRAME if NEW-FRAME is nil.
-
-Value is TO.  */
-       (from, to, frame, new_frame))
+  "Copy face FROM to TO.\n\
+If FRAME it t, copy the global face definition of FROM to the\n\
+global face definition of TO.  Otherwise, copy the frame-local\n\
+definition of FROM on FRAME to the frame-local definition of TO\n\
+on NEW-FRAME, or FRAME if NEW-FRAME is nil.\n\
+\n\
+Value is TO.")
+  (from, to, frame, new_frame)
      Lisp_Object from, to, frame, new_frame;
 {
   Lisp_Object lface, copy;
@@ -3767,13 +3749,13 @@ Value is TO.  */
 
 DEFUN ("internal-set-lisp-face-attribute", Finternal_set_lisp_face_attribute,
        Sinternal_set_lisp_face_attribute, 3, 4, 0,
-       /* Set attribute ATTR of FACE to VALUE.
-FRAME being a frame means change the face on that frame.
-FRAME nil means change the face of the selected frame.
-FRAME t means change the default for new frames.
-FRAME 0 means change the face on all frames, and change the default
-  for new frames.  */
-       (face, attr, value, frame))
+  "Set attribute ATTR of FACE to VALUE.\n\
+FRAME being a frame means change the face on that frame.\n\
+FRAME nil means change change the face of the selected frame.\n\
+FRAME t means change the default for new frames.\n\
+FRAME 0 means change the face on all frames, and change the default\n\
+  for new frames.")
+  (face, attr, value, frame)
      Lisp_Object face, attr, value, frame;
 {
   Lisp_Object lface;
@@ -3790,7 +3772,7 @@ FRAME 0 means change the face on all frames, and change the default
 
   /* If FRAME is 0, change face on all frames, and change the
      default for new frames.  */
-  if (INTEGERP (frame) && XINT (frame) == 0)
+  if (FIXNUMP (frame) && XINT (frame) == 0)
     {
       Lisp_Object tail;
       Finternal_set_lisp_face_attribute (face, attr, value, Qt);
@@ -3835,9 +3817,9 @@ FRAME 0 means change the face on all frames, and change the default
 	    (EQ (face, Qdefault) ? value :
 	     /* The default face must have an absolute size, otherwise, we do
 		a test merge with a random height to see if VALUE's ok. */
-	     merge_face_heights (value, make_number(10), Qnil, Qnil));
+	     merge_face_heights (value, make_fixnum(10), Qnil, Qnil));
 
-	  if (!INTEGERP(test) || XINT(test) <= 0)
+	  if (!FIXNUMP(test) || XINT(test) <= 0)
 	    signal_error ("Invalid face height", value);
 	}
 
@@ -3918,13 +3900,13 @@ FRAME 0 means change the face on all frames, and change the default
       /* Allow t meaning a simple box of width 1 in foreground color
          of the face.  */
       if (EQ (value, Qt))
-	value = make_number (1);
+	value = make_fixnum (1);
 
       if (UNSPECIFIEDP (value))
 	valid_p = 1;
       else if (NILP (value))
 	valid_p = 1;
-      else if (INTEGERP (value))
+      else if (FIXNUMP (value))
 	valid_p = XINT (value) != 0;
       else if (STRINGP (value))
 	valid_p = XSTRING (value)->size > 0;
@@ -3946,7 +3928,7 @@ FRAME 0 means change the face on all frames, and change the default
 
 	      if (EQ (k, QCline_width))
 		{
-		  if (!INTEGERP (v) || XINT (v) == 0)
+		  if (!FIXNUMP (v) || XINT (v) == 0)
 		    break;
 		}
 	      else if (EQ (k, QCcolor))
@@ -4125,8 +4107,7 @@ FRAME 0 means change the face on all frames, and change the default
 #ifdef HAVE_WINDOW_SYSTEM
 	  /* Changed font-related attributes of the `default' face are
 	     reflected in changed `font' frame parameters. */
-	  if (FRAMEP (frame)
-	      && (font_related_attr_p || font_attr_p)
+	  if ((font_related_attr_p || font_attr_p)
 	      && lface_fully_specified_p (XVECTOR (lface)->contents))
 	    set_font_frame_param (frame, lface);
 	  else
@@ -4172,21 +4153,7 @@ FRAME 0 means change the face on all frames, and change the default
 	}
 #endif /* HAVE_WINDOW_SYSTEM */
       else if (EQ (face, Qmenu))
-	{
-	  /* Indicate that we have to update the menu bar when
-	     realizing faces on FRAME.  FRAME t change the
-	     default for new frames.  We do this by setting
-	     setting the flag in new face caches   */
-	  if (FRAMEP (frame))
-	    {
-	      struct frame *f = XFRAME (frame);
-	      if (FRAME_FACE_CACHE (f) == NULL)
-		FRAME_FACE_CACHE (f) = make_face_cache (f);
-	      FRAME_FACE_CACHE (f)->menu_face_changed_p = 1;
-	    }
-	  else
-	    menu_face_changed_default = 1;
-	}
+	++menu_face_change_count;
 
       if (!NILP (param))
 	if (EQ (frame, Qt))
@@ -4199,8 +4166,8 @@ FRAME 0 means change the face on all frames, and change the default
 	  {
 	    Lisp_Object cons;
 	    cons = XCAR (Vparam_value_alist);
-	    XSETCAR (cons, param);
-	    XSETCDR (cons, value);
+	    XCAR (cons) = param;
+	    XCDR (cons) = value;
 	    Fmodify_frame_parameters (frame, Vparam_value_alist);
 	  }
     }
@@ -4311,9 +4278,8 @@ update_face_from_frame_parameter (f, param, new_value)
    doesn't take a frame argument.  */
 
 DEFUN ("internal-face-x-get-resource", Finternal_face_x_get_resource,
-       Sinternal_face_x_get_resource, 3, 3, 0,
-       /* */
-       (resource, class, frame))
+       Sinternal_face_x_get_resource, 3, 3, 0, "")
+  (resource, class, frame)
      Lisp_Object resource, class, frame;
 {
   Lisp_Object value = Qnil;
@@ -4342,7 +4308,7 @@ face_boolean_x_resource_value (value, signal_p)
      Lisp_Object value;
      int signal_p;
 {
-  Lisp_Object result = make_number (0);
+  Lisp_Object result = make_fixnum (0);
 
   xassert (STRINGP (value));
 
@@ -4364,9 +4330,8 @@ face_boolean_x_resource_value (value, signal_p)
 DEFUN ("internal-set-lisp-face-attribute-from-resource",
        Finternal_set_lisp_face_attribute_from_resource,
        Sinternal_set_lisp_face_attribute_from_resource,
-       3, 4, 0,
-       /* */
-       (face, attr, value, frame))
+       3, 4, 0, "")
+  (face, attr, value, frame)
      Lisp_Object face, attr, value, frame;
 {
   CHECK_SYMBOL (face, 0);
@@ -4377,7 +4342,7 @@ DEFUN ("internal-set-lisp-face-attribute-from-resource",
     value = Qunspecified;
   else if (EQ (attr, QCheight))
     {
-      value = Fstring_to_number (value, make_number (10));
+      value = Fstring_to_number (value, make_fixnum (10));
       if (XINT (value) <= 0)
 	signal_error ("Invalid face height from X resource", value);
     }
@@ -4484,7 +4449,10 @@ x_update_menu_appearance (f)
 	}
 
       if (changed_p && f->output_data.x->menubar_widget)
-	free_frame_menubar (f);
+	{
+	  free_frame_menubar (f);
+	  set_frame_menubar (f, 1, 1);
+	}
     }
 }
 
@@ -4495,13 +4463,13 @@ x_update_menu_appearance (f)
 DEFUN ("internal-get-lisp-face-attribute", Finternal_get_lisp_face_attribute,
        Sinternal_get_lisp_face_attribute,
        2, 3, 0,
-       /* Return face attribute KEYWORD of face SYMBOL.
-If SYMBOL does not name a valid Lisp face or KEYWORD isn't a valid
-face attribute name, signal an error.
-If the optional argument FRAME is given, report on face FACE in that
-frame.  If FRAME is t, report on the defaults for face FACE (for new
-frames).  If FRAME is omitted or nil, use the selected frame.  */
-       (symbol, keyword, frame))
+  "Return face attribute KEYWORD of face SYMBOL.\n\
+If SYMBOL does not name a valid Lisp face or KEYWORD isn't a valid\n\
+face attribute name, signal an error.\n\
+If the optional argument FRAME is given, report on face FACE in that\n\
+frame.  If FRAME is t, report on the defaults for face FACE (for new\n\
+frames).  If FRAME is omitted or nil, use the selected frame.")
+  (symbol, keyword, frame)
      Lisp_Object symbol, keyword, frame;
 {
   Lisp_Object lface, value = Qnil;
@@ -4560,9 +4528,9 @@ frames).  If FRAME is omitted or nil, use the selected frame.  */
 DEFUN ("internal-lisp-face-attribute-values",
        Finternal_lisp_face_attribute_values,
        Sinternal_lisp_face_attribute_values, 1, 1, 0,
-       /* Return a list of valid discrete values for face attribute ATTR.
-Value is nil if ATTR doesn't have a discrete set of valid values.  */
-       (attr))
+  "Return a list of valid discrete values for face attribute ATTR.\n\
+Value is nil if ATTR doesn't have a discrete set of valid values.")
+  (attr)
      Lisp_Object attr;
 {
   Lisp_Object result = Qnil;
@@ -4612,9 +4580,9 @@ Value is nil if ATTR doesn't have a discrete set of valid values.  */
 
 DEFUN ("internal-merge-in-global-face", Finternal_merge_in_global_face,
        Sinternal_merge_in_global_face, 2, 2, 0,
-  /* Add attributes from frame-default definition of FACE to FACE on FRAME.
-Default face attributes override any local face attributes.  */
-       (face, frame))
+  "Add attributes from frame-default definition of FACE to FACE on FRAME.\n\
+Default face attributes override any local face attributes.")
+  (face, frame)
      Lisp_Object face, frame;
 {
   int i;
@@ -4647,13 +4615,13 @@ Default face attributes override any local face attributes.  */
    done in fontset.el.  */
 
 DEFUN ("face-font", Fface_font, Sface_font, 1, 2, 0,
-  /* Return the font name of face FACE, or nil if it is unspecified.
-If the optional argument FRAME is given, report on face FACE in that frame.
-If FRAME is t, report on the defaults for face FACE (for new frames).
-  The font default for a face is either nil, or a list
-  of the form (bold), (italic) or (bold italic).
-If FRAME is omitted or nil, use the selected frame.  */
-       (face, frame))
+  "Return the font name of face FACE, or nil if it is unspecified.\n\
+If the optional argument FRAME is given, report on face FACE in that frame.\n\
+If FRAME is t, report on the defaults for face FACE (for new frames).\n\
+  The font default for a face is either nil, or a list\n\
+  of the form (bold), (italic) or (bold italic).\n\
+If FRAME is omitted or nil, use the selected frame.")
+  (face, frame)
      Lisp_Object face, frame;
 {
   if (EQ (frame, Qt))
@@ -4731,11 +4699,11 @@ lface_equal_p (v1, v2)
 
 DEFUN ("internal-lisp-face-equal-p", Finternal_lisp_face_equal_p,
        Sinternal_lisp_face_equal_p, 2, 3, 0,
-       /* True if FACE1 and FACE2 are equal.
-If the optional argument FRAME is given, report on face FACE in that frame.
-If FRAME is t, report on the defaults for face FACE (for new frames).
-If FRAME is omitted or nil, use the selected frame.  */
-       (face1, face2, frame))
+  "True if FACE1 and FACE2 are equal.\n\
+If the optional argument FRAME is given, report on face FACE in that frame.\n\
+If FRAME is t, report on the defaults for face FACE (for new frames).\n\
+If FRAME is omitted or nil, use the selected frame.")
+  (face1, face2, frame)
      Lisp_Object face1, face2, frame;
 {
   int equal_p;
@@ -4761,11 +4729,11 @@ If FRAME is omitted or nil, use the selected frame.  */
 
 DEFUN ("internal-lisp-face-empty-p", Finternal_lisp_face_empty_p,
        Sinternal_lisp_face_empty_p, 1, 2, 0,
-       /* True if FACE has no attribute specified.
-If the optional argument FRAME is given, report on face FACE in that frame.
-If FRAME is t, report on the defaults for face FACE (for new frames).
-If FRAME is omitted or nil, use the selected frame.  */
-       (face, frame))
+  "True if FACE has no attribute specified.\n\
+If the optional argument FRAME is given, report on face FACE in that frame.\n\
+If FRAME is t, report on the defaults for face FACE (for new frames).\n\
+If FRAME is omitted or nil, use the selected frame.")
+  (face, frame)
      Lisp_Object face, frame;
 {
   struct frame *f;
@@ -4792,9 +4760,9 @@ If FRAME is omitted or nil, use the selected frame.  */
 
 DEFUN ("frame-face-alist", Fframe_face_alist, Sframe_face_alist,
        0, 1, 0,
-       /* Return an alist of frame-local faces defined on FRAME.
-For internal use only.  */
-       (frame))
+  "Return an alist of frame-local faces defined on FRAME.\n\
+For internal use only.")
+  (frame)
      Lisp_Object frame;
 {
   struct frame *f = frame_or_selected_frame (frame, 0);
@@ -4986,7 +4954,6 @@ make_face_cache (f)
   c->size = 50;
   c->faces_by_id = (struct face **) xmalloc (c->size * sizeof *c->faces_by_id);
   c->f = f;
-  c->menu_face_changed_p = menu_face_changed_default;
   return c;
 }
 
@@ -5384,7 +5351,7 @@ smaller_face (f, face_id, steps)
     {
       /* Look up a face for a slightly smaller/larger font.  */
       pt += delta;
-      attrs[LFACE_HEIGHT_INDEX] = make_number (pt);
+      attrs[LFACE_HEIGHT_INDEX] = make_fixnum (pt);
       new_face_id = lookup_face (f, attrs, 0, NULL);
       new_face = FACE_FROM_ID (f, new_face_id);
 
@@ -5427,7 +5394,7 @@ face_with_height (f, face_id, height)
 
   face = FACE_FROM_ID (f, face_id);
   bcopy (face->lface, attrs, sizeof attrs);
-  attrs[LFACE_HEIGHT_INDEX] = make_number (height);
+  attrs[LFACE_HEIGHT_INDEX] = make_fixnum (height);
   face_id = lookup_face (f, attrs, 0, NULL);
 #endif /* HAVE_WINDOW_SYSTEM */
 
@@ -5471,15 +5438,15 @@ lookup_derived_face (f, symbol, c, face_id)
 DEFUN ("internal-set-font-selection-order",
        Finternal_set_font_selection_order,
        Sinternal_set_font_selection_order, 1, 1, 0,
-       /* Set font selection order for face font selection to ORDER.
-ORDER must be a list of length 4 containing the symbols `:width',
-`:height', `:weight', and `:slant'.  Face attributes appearing
-first in ORDER are matched first, e.g. if `:height' appears before
-`:weight' in ORDER, font selection first tries to find a font with
-a suitable height, and then tries to match the font weight.
-Value is ORDER.  */
-       (order))
-     Lisp_Object order;
+  "Set font selection order for face font selection to ORDER.\n\
+ORDER must be a list of length 4 containing the symbols `:width',\n\
+`:height', `:weight', and `:slant'.  Face attributes appearing\n\
+first in ORDER are matched first, e.g. if `:height' appears before\n\
+`:weight' in ORDER, font selection first tries to find a font with\n\
+a suitable height, and then tries to match the font weight.\n\
+Value is ORDER.")
+  (order)
+       Lisp_Object order;
 {
   Lisp_Object list;
   int i;
@@ -5531,11 +5498,11 @@ Value is ORDER.  */
 DEFUN ("internal-set-alternative-font-family-alist",
        Finternal_set_alternative_font_family_alist,
        Sinternal_set_alternative_font_family_alist, 1, 1, 0,
-  /* Define alternative font families to try in face font selection.
-ALIST is an alist of (FAMILY ALTERNATIVE1 ALTERNATIVE2 ...) entries.
-Each ALTERNATIVE is tried in order if no fonts of font family FAMILY can
-be found.  Value is ALIST.  */
-       (alist))
+  "Define alternative font families to try in face font selection.\n\
+ALIST is an alist of (FAMILY ALTERNATIVE1 ALTERNATIVE2 ...) entries.\n\
+Each ALTERNATIVE is tried in order if no fonts of font family FAMILY can\n\
+be found.  Value is ALIST.")
+  (alist)
      Lisp_Object alist;
 {
   CHECK_LIST (alist, 0);
@@ -5548,11 +5515,11 @@ be found.  Value is ALIST.  */
 DEFUN ("internal-set-alternative-font-registry-alist",
        Finternal_set_alternative_font_registry_alist,
        Sinternal_set_alternative_font_registry_alist, 1, 1, 0,
-  /* Define alternative font registries to try in face font selection.
-ALIST is an alist of (REGISTRY ALTERNATIVE1 ALTERNATIVE2 ...) entries.
-Each ALTERNATIVE is tried in order if no fonts of font registry REGISTRY can
-be found.  Value is ALIST.  */
-       (alist))
+  "Define alternative font registries to try in face font selection.\n\
+ALIST is an alist of (REGISTRY ALTERNATIVE1 ALTERNATIVE2 ...) entries.\n\
+Each ALTERNATIVE is tried in order if no fonts of font registry REGISTRY can\n\
+be found.  Value is ALIST.")
+  (alist)
      Lisp_Object alist;
 {
   CHECK_LIST (alist, 0);
@@ -6053,8 +6020,8 @@ realize_basic_faces (f)
   int success_p = 0;
   int count = BINDING_STACK_SIZE ();
 
-  /* Block input here so that we won't be surprised by an X expose
-     event, for instance, without having the faces set up.  */
+  /* Block input there so that we won't be surprised by an X expose
+     event, for instance without having the faces set up.  */
   BLOCK_INPUT;
   specbind (Qscalable_fonts_allowed, Qt);
 
@@ -6071,9 +6038,9 @@ realize_basic_faces (f)
       realize_named_face (f, Qmenu, MENU_FACE_ID);
 
       /* Reflect changes in the `menu' face in menu bars.  */
-      if (FRAME_FACE_CACHE (f)->menu_face_changed_p)
+      if (menu_face_change_count)
 	{
-	  FRAME_FACE_CACHE (f)->menu_face_changed_p = 0;
+	  --menu_face_change_count;
 #ifdef USE_X_TOOLKIT
 	  x_update_menu_appearance (f);
 #endif
@@ -6126,7 +6093,7 @@ realize_default_face (f)
     {
       LFACE_FAMILY (lface) = build_string ("default");
       LFACE_SWIDTH (lface) = Qnormal;
-      LFACE_HEIGHT (lface) = make_number (1);
+      LFACE_HEIGHT (lface) = make_fixnum (1);
       LFACE_WEIGHT (lface) = Qnormal;
       LFACE_SLANT (lface) = Qnormal;
       LFACE_AVGWIDTH (lface) = Qunspecified;
@@ -6389,7 +6356,7 @@ realize_x_face (cache, attrs, c, base_face)
       face->box = FACE_SIMPLE_BOX;
       face->box_line_width = 1;
     }
-  else if (INTEGERP (box))
+  else if (FIXNUMP (box))
     {
       /* Simple box of specified line width in foreground color of the
          face.  */
@@ -6422,7 +6389,7 @@ realize_x_face (cache, attrs, c, base_face)
 
 	  if (EQ (keyword, QCline_width))
 	    {
-	      if (INTEGERP (value) && XINT (value) != 0)
+	      if (FIXNUMP (value) && XINT (value) != 0)
 		face->box_line_width = XINT (value);
 	    }
 	  else if (EQ (keyword, QCcolor))
@@ -6659,13 +6626,13 @@ realize_tty_face (cache, attrs, c)
 DEFUN ("tty-suppress-bold-inverse-default-colors",
        Ftty_suppress_bold_inverse_default_colors,
        Stty_suppress_bold_inverse_default_colors, 1, 1, 0,
-  /* Suppress/allow boldness of faces with inverse default colors.
-SUPPRESS non-nil means suppress it.
-This affects bold faces on TTYs whose foreground is the default background
-color of the display and whose background is the default foreground color.
-For such faces, the bold face attribute is ignored if this variable
-is non-nil.  */
-       (suppress))
+  "Suppress/allow boldness of faces with inverse default colors.\n\
+SUPPRESS non-nil means suppress it.\n\
+This affects bold faces on TTYs whose foreground is the default background\n\
+color of the display and whose background is the default foreground color.\n\
+For such faces, the bold face attribute is ignored if this variable\n\
+is non-nil.")
+  (suppress)
      Lisp_Object suppress;
 {
   tty_suppress_bold_inverse_default_colors_p = !NILP (suppress);
@@ -6763,7 +6730,7 @@ face_at_buffer_position (w, pos, region_beg, region_end,
   prop = Fget_text_property (position, propname, w->buffer);
   XSETFASTINT (limit1, (limit < endpos ? limit : endpos));
   end = Fnext_single_property_change (position, propname, w->buffer, limit1);
-  if (INTEGERP (end))
+  if (FIXNUMP (end))
     endpos = XINT (end);
 
   /* Look at properties from overlays.  */
@@ -6895,7 +6862,7 @@ face_at_string_position (w, string, pos, bufpos, region_beg,
      short, so set the limit to the end of the string.  */
   XSETFASTINT (limit, XSTRING (string)->size);
   end = Fnext_single_property_change (position, prop_name, string, limit);
-  if (INTEGERP (end))
+  if (FIXNUMP (end))
     *endptr = XFASTINT (end);
   else
     *endptr = -1;
@@ -6981,8 +6948,8 @@ dump_realized_face (face)
 }
 
 
-DEFUN ("dump-face", Fdump_face, Sdump_face, 0, 1, 0, /* */
-       (n))
+DEFUN ("dump-face", Fdump_face, Sdump_face, 0, 1, 0, "")
+   (n)
      Lisp_Object n;
 {
   if (NILP (n))
@@ -6999,7 +6966,7 @@ DEFUN ("dump-face", Fdump_face, Sdump_face, 0, 1, 0, /* */
       fprintf (stderr, "\n");
 
       for (i = 0; i < FRAME_FACE_CACHE (SELECTED_FRAME ())->used; ++i)
-	Fdump_face (make_number (i));
+	Fdump_face (make_fixnum (i));
     }
   else
     {
@@ -7016,8 +6983,8 @@ DEFUN ("dump-face", Fdump_face, Sdump_face, 0, 1, 0, /* */
 
 
 DEFUN ("show-face-resources", Fshow_face_resources, Sshow_face_resources,
-       0, 0, 0, /* */
-       ())
+       0, 0, 0, "")
+  ()
 {
   fprintf (stderr, "number of colors = %d\n", ncolors_allocated);
   fprintf (stderr, "number of pixmaps = %d\n", npixmaps_allocated);
@@ -7209,41 +7176,40 @@ syms_of_xfaces ()
   defsubr (&Sdump_colors);
 #endif
 
-  DEFVAR_LISP ("font-list-limit", &Vfont_list_limit
-	       /* *Limit for font matching.
-If an integer > 0, font matching functions won't load more than
-that number of fonts when searching for a matching font.  */);
-  Vfont_list_limit = make_number (DEFAULT_FONT_LIST_LIMIT);
+  DEFVAR_LISP ("font-list-limit", &Vfont_list_limit,
+    "*Limit for font matching.\n\
+If an integer > 0, font matching functions won't load more than\n\
+that number of fonts when searching for a matching font.");
+  Vfont_list_limit = make_fixnum (DEFAULT_FONT_LIST_LIMIT);
 
-  DEFVAR_LISP ("face-new-frame-defaults", &Vface_new_frame_defaults
-    /* List of global face definitions (for internal use only.)  */);
+  DEFVAR_LISP ("face-new-frame-defaults", &Vface_new_frame_defaults,
+    "List of global face definitions (for internal use only.)");
   Vface_new_frame_defaults = Qnil;
 
-  DEFVAR_LISP ("face-default-stipple", &Vface_default_stipple
-    /* *Default stipple pattern used on monochrome displays.
-This stipple pattern is used on monochrome displays
-instead of shades of gray for a face background color.
-See `set-face-stipple' for possible values for this variable.  */);
+  DEFVAR_LISP ("face-default-stipple", &Vface_default_stipple,
+    "*Default stipple pattern used on monochrome displays.\n\
+This stipple pattern is used on monochrome displays\n\
+instead of shades of gray for a face background color.\n\
+See `set-face-stipple' for possible values for this variable.");
   Vface_default_stipple = build_string ("gray3");
 
-  DEFVAR_LISP ("tty-defined-color-alist", &Vtty_defined_color_alist
-   /* An alist of defined terminal colors and their RGB values.  */);
+  DEFVAR_LISP ("tty-defined-color-alist", &Vtty_defined_color_alist,
+   "An alist of defined terminal colors and their RGB values.");
   Vtty_defined_color_alist = Qnil;
 
-  DEFVAR_LISP ("scalable-fonts-allowed", &Vscalable_fonts_allowed
-	       /* Allowed scalable fonts.
-A value of nil means don't allow any scalable fonts.
-A value of t means allow any scalable font.
-Otherwise, value must be a list of regular expressions.  A font may be
-scaled if its name matches a regular expression in the list.
-Note that if value is nil, a scalable font might still be used, if no
-other font of the appropriate family and registry is available.  */);
+  DEFVAR_LISP ("scalable-fonts-allowed", &Vscalable_fonts_allowed,
+    "Allowed scalable fonts.\n\
+A value of nil means don't allow any scalable fonts.\n\
+A value of t means allow any scalable font.\n\
+Otherwise, value must be a list of regular expressions.  A font may be\n\
+scaled if its name matches a regular expression in the list.\n\
+Note that if value is nil, a scalable font might still be used, if no\n\
+other font of the appropriate family and registry is available.");
   Vscalable_fonts_allowed = Qnil;
 
-  DEFVAR_LISP ("face-ignored-fonts", &Vface_ignored_fonts
-	       /* List of ignored fonts.
-Each element is a regular expression that matches names of fonts to
-ignore.  */);
+  DEFVAR_LISP ("face-ignored-fonts", &Vface_ignored_fonts,
+    "List of ignored fonts.\n\
+Each element is a regular expression that matches names of fonts to ignore.");
   Vface_ignored_fonts = Qnil;
 
 #ifdef HAVE_WINDOW_SYSTEM

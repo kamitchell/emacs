@@ -40,7 +40,6 @@ Boston, MA 02111-1307, USA.  */
 #include "buffer.h"
 #include "keyboard.h"
 #include "charset.h"
-#include "keymap.h"
 
 #ifdef HAVE_INDEX
 extern char *index P_ ((const char *, int));
@@ -125,7 +124,7 @@ get_doc_string (filepos, unibyte, definition)
   int offset, position;
   Lisp_Object file, tem;
 
-  if (INTEGERP (filepos))
+  if (FIXNUMP (filepos))
     {
       file = Vdoc_file_name;
       position = XINT (filepos);
@@ -329,7 +328,7 @@ string is passed through `substitute-command-keys'.")
       else if ((EMACS_INT) XSUBR (fun)->doc >= 0)
 	doc = build_string (XSUBR (fun)->doc);
       else
-	doc = get_doc_string (make_number (- (EMACS_INT) XSUBR (fun)->doc),
+	doc = get_doc_string (make_fixnum (- (EMACS_INT) XSUBR (fun)->doc),
 			      0, 0);
       if (! NILP (tem = Fassq (function, Vhelp_manyarg_func_alist)))
 	doc = concat3 (doc, build_string ("\n"), Fcdr (tem));
@@ -397,7 +396,7 @@ DEFUN ("documentation-property", Fdocumentation_property,
 Third argument RAW omitted or nil means pass the result through\n\
 `substitute-command-keys' if it is a string.\n\
 \n\
-This differs from `get' in that it can refer to strings stored in the\n\
+This is differs from `get' in that it can refer to strings stored in the\n\
 `etc/DOC' file; and that it evaluates documentation properties that\n\
 aren't strings.")
   (symbol, prop, raw)
@@ -406,9 +405,9 @@ aren't strings.")
   Lisp_Object tem;
 
   tem = Fget (symbol, prop);
-  if (INTEGERP (tem))
-    tem = get_doc_string (XINT (tem) > 0 ? tem : make_number (- XINT (tem)), 0, 0);
-  else if (CONSP (tem) && INTEGERP (XCDR (tem)))
+  if (FIXNUMP (tem))
+    tem = get_doc_string (XINT (tem) > 0 ? tem : make_fixnum (- XINT (tem)), 0, 0);
+  else if (CONSP (tem) && FIXNUMP (XCDR (tem)))
     tem = get_doc_string (tem, 0, 0);
   else if (!STRINGP (tem))
     /* Feval protects its argument.  */
@@ -444,8 +443,8 @@ store_function_docstring (fun, offset)
       if (EQ (tem, Qlambda) || EQ (tem, Qautoload))
 	{
 	  tem = Fcdr (Fcdr (fun));
-	  if (CONSP (tem) && INTEGERP (XCAR (tem)))
-	    XSETCARFASTINT (tem, offset);
+	  if (CONSP (tem) && FIXNUMP (XCAR (tem)))
+	    XSETFASTINT (XCAR (tem), offset);
 	}
       else if (EQ (tem, Qmacro))
 	store_function_docstring (XCDR (fun), offset);
@@ -549,7 +548,7 @@ when doc strings are referred to later in the dumped Emacs.")
 		     and make it negative for a user-variable
 		     (doc starts with a `*').  */
 		  Fput (sym, Qvariable_documentation,
-			make_number ((pos + end + 1 - buf)
+			make_fixnum ((pos + end + 1 - buf)
 				     * (end[1] == '*' ? -1 : 1)));
 		}
 
@@ -681,7 +680,7 @@ thus, \\=\\=\\=\\= puts \\=\\= into the output, and \\=\\=\\=\\[ puts \\=\\[ int
 	     useful even when there is a menu bar.  */
 	  if (!NILP (tem))
 	    {
-	      firstkey = Faref (tem, make_number (0));
+	      firstkey = Faref (tem, make_fixnum (0));
 	      if (EQ (firstkey, Qmenu_bar))
 		tem = Qnil;
 	    }

@@ -37,7 +37,6 @@ Boston, MA 02111-1307, USA.  */
 /* These help us bind and responding to switch-frame events.  */
 #include "commands.h"
 #include "keyboard.h"
-#include "keymap.h"
 #include "frame.h"
 #ifdef HAVE_WINDOW_SYSTEM
 #include "fontset.h"
@@ -89,9 +88,9 @@ set_menu_bar_lines_1 (window, n)
   XSETFASTINT (w->top, XFASTINT (w->top) + n);
   XSETFASTINT (w->height, XFASTINT (w->height) - n);
   
-  if (INTEGERP (w->orig_top))
+  if (FIXNUMP (w->orig_top))
     XSETFASTINT (w->orig_top, XFASTINT (w->orig_top) + n);
-  if (INTEGERP (w->orig_height))
+  if (FIXNUMP (w->orig_height))
     XSETFASTINT (w->orig_height, XFASTINT (w->orig_height) - n);
 
   /* Handle just the top child in a vertical split.  */
@@ -121,7 +120,7 @@ set_menu_bar_lines (f, value, oldval)
   if (FRAME_MINIBUF_ONLY_P (f))
     return;
 
-  if (INTEGERP (value))
+  if (FIXNUMP (value))
     nlines = XINT (value);
   else
     nlines = 0;
@@ -543,7 +542,7 @@ Note that changing the size of one terminal frame automatically affects all.")
      the vectors which are the CDRs of associations in face_alist to
      be copied as well.  */
   for (tem = f->face_alist; CONSP (tem); tem = XCDR (tem))
-    XSETCDR (XCAR (tem), Fcopy_sequence (XCDR (XCAR (tem))));
+    XCDR (XCAR (tem)) = Fcopy_sequence (XCDR (XCAR (tem)));
   return frame;
 }
 
@@ -870,7 +869,7 @@ next_frame (frame, minibuf)
 		if (FRAME_VISIBLE_P (XFRAME (f)))
 		  return f;
 	      }
-	    else if (INTEGERP (minibuf) && XINT (minibuf) == 0)
+	    else if (FIXNUMP (minibuf) && XINT (minibuf) == 0)
 	      {
 		FRAME_SAMPLE_VISIBILITY (XFRAME (f));
 		if (FRAME_VISIBLE_P (XFRAME (f))
@@ -1319,9 +1318,8 @@ upper-left corner.\n\
 If Emacs is running on a mouseless terminal or hasn't been programmed\n\
 to read the mouse position, it returns the selected frame for FRAME\n\
 and nil for X and Y.\n\
-If `mouse-position-function' is non-nil, `mouse-position' calls it,\n\
-passing the normal return value to that function as an argument,\n\
-and returns whatever that function returns.")
+Runs the abnormal hook `mouse-position-function' with the normal return\n\
+value as argument.")
   ()
 {
   FRAME_PTR f;
@@ -1410,7 +1408,7 @@ before calling this function on it, like this.\n\
   /* I think this should be done with a hook.  */
 #ifdef HAVE_WINDOW_SYSTEM
   if (FRAME_WINDOW_P (XFRAME (frame)))
-    /* Warping the mouse will cause enternotify and focus events.  */
+    /* Warping the mouse will cause  enternotify and focus events. */
     x_set_mouse_position (XFRAME (frame), XINT (x), XINT (y));
 #else
 #if defined (MSDOS) && defined (HAVE_MOUSE)
@@ -1442,7 +1440,7 @@ before calling this function on it, like this.\n\
   /* I think this should be done with a hook.  */
 #ifdef HAVE_WINDOW_SYSTEM
   if (FRAME_WINDOW_P (XFRAME (frame)))
-    /* Warping the mouse will cause enternotify and focus events.  */
+    /* Warping the mouse will cause  enternotify and focus events. */
     x_set_mouse_pixel_position (XFRAME (frame), XINT (x), XINT (y));
 #else
 #if defined (MSDOS) && defined (HAVE_MOUSE)
@@ -1461,7 +1459,7 @@ static void make_frame_visible_1 P_ ((Lisp_Object));
 
 DEFUN ("make-frame-visible", Fmake_frame_visible, Smake_frame_visible,
        0, 1, "",
-  "Make the frame FRAME visible (assuming it is an X window).\n\
+  "Make the frame FRAME visible (assuming it is an X-window).\n\
 If omitted, FRAME defaults to the currently selected frame.")
   (frame)
      Lisp_Object frame;
@@ -1482,7 +1480,7 @@ If omitted, FRAME defaults to the currently selected frame.")
 
   make_frame_visible_1 (XFRAME (frame)->root_window);
 
-  /* Make menu bar update for the Buffers and Frames menus.  */
+  /* Make menu bar update for the Buffers and Frams menus.  */
   windows_or_buffers_changed++;
 
   return frame;
@@ -1513,7 +1511,7 @@ make_frame_visible_1 (window)
 
 DEFUN ("make-frame-invisible", Fmake_frame_invisible, Smake_frame_invisible,
        0, 2, "",
-  "Make the frame FRAME invisible (assuming it is an X window).\n\
+  "Make the frame FRAME invisible (assuming it is an X-window).\n\
 If omitted, FRAME defaults to the currently selected frame.\n\
 Normally you may not make FRAME invisible if all other frames are invisible,\n\
 but if the second optional argument FORCE is non-nil, you may do so.")
@@ -1549,7 +1547,7 @@ but if the second optional argument FORCE is non-nil, you may do so.")
     x_make_frame_invisible (XFRAME (frame));
 #endif
 
-  /* Make menu bar update for the Buffers and Frames menus.  */
+  /* Make menu bar update for the Buffers and Frams menus.  */
   windows_or_buffers_changed++;
 
   return Qnil;
@@ -1588,7 +1586,7 @@ If omitted, FRAME defaults to the currently selected frame.")
       x_iconify_frame (XFRAME (frame));
 #endif
 
-  /* Make menu bar update for the Buffers and Frames menus.  */
+  /* Make menu bar update for the Buffers and Frams menus.  */
   windows_or_buffers_changed++;
 
   return Qnil;
@@ -1916,7 +1914,7 @@ store_frame_param (f, prop, val)
   if (SYMBOLP (prop))
     {
       Lisp_Object valcontents;
-      valcontents = SYMBOL_VALUE (prop);
+      valcontents = XSYMBOL (prop)->value;
       if ((BUFFER_LOCAL_VALUEP (valcontents)
   	   || SOME_BUFFER_LOCAL_VALUEP (valcontents))
 	  && XBUFFER_LOCAL_VALUE (valcontents)->check_frame
@@ -1940,7 +1938,7 @@ store_frame_param (f, prop, val)
   if (! FRAME_WINDOW_P (f))
     {
       if (EQ (prop, Qmenu_bar_lines))
-	set_menu_bar_lines (f, val, make_number (FRAME_MENU_BAR_LINES (f)));
+	set_menu_bar_lines (f, val, make_fixnum (FRAME_MENU_BAR_LINES (f)));
       else if (EQ (prop, Qname))
 	set_term_frame_name (f, val);
     }
@@ -2029,9 +2027,9 @@ If FRAME is omitted, return information on the currently selected frame.")
     }
   store_in_alist (&alist, Qname, f->name);
   height = (FRAME_NEW_HEIGHT (f) ? FRAME_NEW_HEIGHT (f) : FRAME_HEIGHT (f));
-  store_in_alist (&alist, Qheight, make_number (height));
+  store_in_alist (&alist, Qheight, make_fixnum (height));
   width = (FRAME_NEW_WIDTH (f) ? FRAME_NEW_WIDTH (f) : FRAME_WIDTH (f));
-  store_in_alist (&alist, Qwidth, make_number (width));
+  store_in_alist (&alist, Qwidth, make_fixnum (width));
   store_in_alist (&alist, Qmodeline, (FRAME_WANTS_MODELINE_P (f) ? Qt : Qnil));
   store_in_alist (&alist, Qminibuffer,
 		  (! FRAME_HAS_MINIBUF_P (f) ? Qnil
@@ -2227,10 +2225,10 @@ For a terminal frame, the value is always 1.")
 
 #ifdef HAVE_WINDOW_SYSTEM
   if (FRAME_WINDOW_P (f))
-    return make_number (x_char_height (f));
+    return make_fixnum (x_char_height (f));
   else
 #endif
-    return make_number (1);
+    return make_fixnum (1);
 }
 
 
@@ -2253,10 +2251,10 @@ For a terminal screen, the value is always 1.")
 
 #ifdef HAVE_WINDOW_SYSTEM
   if (FRAME_WINDOW_P (f))
-    return make_number (x_char_width (f));
+    return make_fixnum (x_char_width (f));
   else
 #endif
-    return make_number (1);
+    return make_fixnum (1);
 }
 
 DEFUN ("frame-pixel-height", Fframe_pixel_height, 
@@ -2278,10 +2276,10 @@ If FRAME is omitted, the selected frame is used.")
 
 #ifdef HAVE_WINDOW_SYSTEM
   if (FRAME_WINDOW_P (f))
-    return make_number (x_pixel_height (f));
+    return make_fixnum (x_pixel_height (f));
   else
 #endif
-    return make_number (FRAME_HEIGHT (f));
+    return make_fixnum (FRAME_HEIGHT (f));
 }
 
 DEFUN ("frame-pixel-width", Fframe_pixel_width, 
@@ -2301,10 +2299,10 @@ If FRAME is omitted, the selected frame is used.")
 
 #ifdef HAVE_WINDOW_SYSTEM
   if (FRAME_WINDOW_P (f))
-    return make_number (x_pixel_width (f));
+    return make_fixnum (x_pixel_width (f));
   else
 #endif
-    return make_number (FRAME_WIDTH (f));
+    return make_fixnum (FRAME_WIDTH (f));
 }
 
 DEFUN ("set-frame-height", Fset_frame_height, Sset_frame_height, 2, 3, 0,
@@ -2491,10 +2489,8 @@ The `menu-bar-lines' element of the list controls whether new frames\n\
   Vemacs_iconified = Qnil;
 
   DEFVAR_LISP ("mouse-position-function", &Vmouse_position_function,
-    "If non-nil, function to transform normal value of `mouse-position'.\n\
-`mouse-position' calls this function, passing its usual return value as\n\
-argument, and returns whatever this function returns.\n\
-This abnormal hook exists for the benefit of packages like `xt-mouse.el'\n\
+    "If non-nil, function applied to the normal result of `mouse-position'.\n\
+This abnormal hook exists for the benefit of packages like XTerm-mouse\n\
 which need to do mouse handling at the Lisp level.");
   Vmouse_position_function = Qnil;
 
@@ -2509,9 +2505,7 @@ frames; once the frame is created, it sticks with its assigned\n\
 minibuffer, no matter what this variable is set to.  This means that\n\
 this variable doesn't necessarily say anything meaningful about the\n\
 current set of frames, or where the minibuffer is currently being\n\
-displayed.\n\
-\n\
-This variable is local to the current terminal and cannot be buffer-local.");
+displayed.");
 
   staticpro (&Vframe_list);
 

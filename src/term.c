@@ -1,6 +1,6 @@
-/* Terminal control module for terminals described by TERMCAP
+/* terminal control module for terminals described by TERMCAP
    Copyright (C) 1985, 86, 87, 93, 94, 95, 98, 2000, 2001
-   Free Software Foundation, Inc.
+     Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -19,7 +19,8 @@ along with GNU Emacs; see the file COPYING.  If not, write to
 the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
 Boston, MA 02111-1307, USA.  */
 
-/* New redisplay, TTY faces by Gerd Moellmann <gerd@gnu.org>.  */
+/* New redisplay, TTY faces by Gerd Moellmann <gerd@acm.org>.  */
+
 
 #include <config.h>
 #include <stdio.h>
@@ -27,7 +28,6 @@ Boston, MA 02111-1307, USA.  */
 #include <string.h>
 #include "termchar.h"
 #include "termopts.h"
-#define DOC_STRINGS_IN_COMMENTS
 #include "lisp.h"
 #include "charset.h"
 #include "coding.h"
@@ -37,7 +37,6 @@ Boston, MA 02111-1307, USA.  */
 #include "termhooks.h"
 #include "dispextern.h"
 #include "window.h"
-#include "keymap.h"
 
 /* For now, don't try to include termcap.h.  On some systems,
    configure finds a non-standard termcap.h that the main build
@@ -64,6 +63,9 @@ static void turn_on_face P_ ((struct frame *, int face_id));
 static void turn_off_face P_ ((struct frame *, int face_id));
 static void tty_show_cursor P_ ((void));
 static void tty_hide_cursor P_ ((void));
+
+#define max(a, b) ((a) > (b) ? (a) : (b))
+#define min(a, b) ((a) < (b) ? (a) : (b))
 
 #define OUTPUT(a) \
      tputs (a, (int) (FRAME_HEIGHT (XFRAME (selected_frame)) - curY), cmputc)
@@ -156,7 +158,6 @@ void (*frame_up_to_date_hook) P_ ((struct frame *));
 
    This should clear mouse_moved until the next motion
    event arrives.  */
-
 void (*mouse_position_hook) P_ ((FRAME_PTR *f, int insist,
 				 Lisp_Object *bar_window,
 				 enum scroll_bar_part *part,
@@ -169,7 +170,6 @@ void (*mouse_position_hook) P_ ((FRAME_PTR *f, int insist,
    frame; under X, this means it lies about where the focus is.
    This hook tells the window system code to re-decide where to put
    the highlight.  */
-
 void (*frame_rehighlight_hook) P_ ((FRAME_PTR f));
 
 /* If we're displaying frames using a window system that can stack
@@ -182,7 +182,6 @@ void (*frame_rehighlight_hook) P_ ((FRAME_PTR f));
    If RAISE is non-zero, F is brought to the front, before all other
    windows.  If RAISE is zero, F is sent to the back, behind all other
    windows.  */
-
 void (*frame_raise_lower_hook) P_ ((FRAME_PTR f, int raise));
 
 /* Set the vertical scroll bar for WINDOW to have its upper left corner
@@ -216,12 +215,10 @@ void (*set_vertical_scroll_bar_hook)
    If non-zero, this hook should be safe to apply to any frame,
    whether or not it can support scroll bars, and whether or not it is
    currently displaying them.  */
-
 void (*condemn_scroll_bars_hook) P_ ((FRAME_PTR frame));
 
 /* Unmark WINDOW's scroll bar for deletion in this judgement cycle.
    Note that it's okay to redeem a scroll bar that is not condemned.  */
-
 void (*redeem_scroll_bar_hook) P_ ((struct window *window));
 
 /* Remove all scroll bars on FRAME that haven't been saved since the
@@ -235,7 +232,6 @@ void (*redeem_scroll_bar_hook) P_ ((struct window *window));
    If non-zero, this hook should be safe to apply to any frame,
    whether or not it can support scroll bars, and whether or not it is
    currently displaying them.  */
-
 void (*judge_scroll_bars_hook) P_ ((FRAME_PTR FRAME));
 
 /* Hook to call in estimate_mode_line_height, if any.  */
@@ -422,10 +418,6 @@ FRAME_PTR updating_frame;
 
 static int system_uses_terminfo;
 
-/* Flag used in tty_show/hide_cursor.  */
-
-static int tty_cursor_hidden;
-
 char *tparam ();
 
 extern char *tgetstr ();
@@ -445,7 +437,7 @@ extern char *tgetstr ();
 void
 ring_bell ()
 {
-  if (!NILP (Vring_bell_function))
+  if (! NILP (Vring_bell_function))
     {
       Lisp_Object function;
 
@@ -456,97 +448,105 @@ ring_bell ()
 	 We don't specbind it, because that would carefully
 	 restore the bad value if there's an error
 	 and make the loop of errors happen anyway.  */
-      
       function = Vring_bell_function;
       Vring_bell_function = Qnil;
 
       call0 (function);
 
       Vring_bell_function = function;
+      return;
     }
-  else if (!FRAME_TERMCAP_P (XFRAME (selected_frame)))
-    (*ring_bell_hook) ();
-  else
-    OUTPUT (TS_visible_bell && visible_bell ? TS_visible_bell : TS_bell);
+
+  if (! FRAME_TERMCAP_P (XFRAME (selected_frame)))
+    {
+      (*ring_bell_hook) ();
+      return;
+    }
+  OUTPUT (TS_visible_bell && visible_bell ? TS_visible_bell : TS_bell);
 }
 
 void
 set_terminal_modes ()
 {
-  if (FRAME_TERMCAP_P (XFRAME (selected_frame)))
+  if (! FRAME_TERMCAP_P (XFRAME (selected_frame)))
     {
-      OUTPUT_IF (TS_termcap_modes);
-      OUTPUT_IF (TS_cursor_visible);
-      OUTPUT_IF (TS_keypad_mode);
-      losecursor ();
+      (*set_terminal_modes_hook) ();
+      return;
     }
-  else
-    (*set_terminal_modes_hook) ();
+  OUTPUT_IF (TS_termcap_modes);
+  OUTPUT_IF (TS_cursor_visible);
+  OUTPUT_IF (TS_keypad_mode);
+  losecursor ();
 }
 
 void
 reset_terminal_modes ()
 {
-  if (FRAME_TERMCAP_P (XFRAME (selected_frame)))
+  if (! FRAME_TERMCAP_P (XFRAME (selected_frame)))
     {
-      if (TN_standout_width < 0)
-	turn_off_highlight ();
-      turn_off_insert ();
-      OUTPUT_IF (TS_end_keypad_mode);
-      OUTPUT_IF (TS_cursor_normal);
-      OUTPUT_IF (TS_end_termcap_modes);
-      OUTPUT_IF (TS_orig_pair);
-      /* Output raw CR so kernel can track the cursor hpos.  */
-      /* But on magic-cookie terminals this can erase an end-standout
-	 marker and cause the rest of the frame to be in standout, so
-	 move down first.  */
-      if (TN_standout_width >= 0)
-	cmputc ('\n');
-      cmputc ('\r');
+      if (reset_terminal_modes_hook)
+	(*reset_terminal_modes_hook) ();
+      return;
     }
-  else if (reset_terminal_modes_hook)
-    (*reset_terminal_modes_hook) ();
+  if (TN_standout_width < 0)
+    turn_off_highlight ();
+  turn_off_insert ();
+  OUTPUT_IF (TS_end_keypad_mode);
+  OUTPUT_IF (TS_cursor_normal);
+  OUTPUT_IF (TS_end_termcap_modes);
+  OUTPUT_IF (TS_orig_pair);
+  /* Output raw CR so kernel can track the cursor hpos.  */
+  /* But on magic-cookie terminals this can erase an end-standout marker and
+     cause the rest of the frame to be in standout, so move down first.  */
+  if (TN_standout_width >= 0)
+    cmputc ('\n');
+  cmputc ('\r');
 }
 
 void
 update_begin (f)
-     struct frame *f;
+     FRAME_PTR f;
 {
   updating_frame = f;
-  if (!FRAME_TERMCAP_P (f))
-    update_begin_hook (f);
+  if (! FRAME_TERMCAP_P (updating_frame))
+    (*update_begin_hook) (f);
+  else
+    tty_hide_cursor ();
 }
 
 void
 update_end (f)
-     struct frame *f;
+     FRAME_PTR f;
 {
-  if (FRAME_TERMCAP_P (f))
+  if (! FRAME_TERMCAP_P (f))
     {
-      if (!XWINDOW (selected_window)->cursor_off_p)
-	tty_show_cursor ();
-      turn_off_insert ();
-      background_highlight ();
-      standout_requested = 0;
+      (*update_end_hook) (f);
+      updating_frame = 0;
+      return;
     }
-  else
-    update_end_hook (f);
+
+  if (!XWINDOW (selected_window)->cursor_off_p)
+    tty_show_cursor ();
   
-  updating_frame = NULL;
+  turn_off_insert ();
+  background_highlight ();
+  standout_requested = 0;
+  updating_frame = 0;
 }
 
 void
 set_terminal_window (size)
      int size;
 {
-  if (FRAME_TERMCAP_P (updating_frame))
+  if (! FRAME_TERMCAP_P (updating_frame))
     {
-      specified_window = size ? size : FRAME_HEIGHT (updating_frame);
-      if (scroll_region_ok)
-	set_scroll_region (0, specified_window);
+      (*set_terminal_window_hook) (size);
+      return;
     }
-  else
-    set_terminal_window_hook (size);
+  specified_window = size ? size : FRAME_HEIGHT (XFRAME (selected_frame));
+  if (!scroll_region_ok)
+    return;
+  set_scroll_region (0, specified_window);
 }
 
 void
@@ -557,22 +557,26 @@ set_scroll_region (start, stop)
   struct frame *sf = XFRAME (selected_frame);
   
   if (TS_set_scroll_region)
-    buf = tparam (TS_set_scroll_region, 0, 0, start, stop - 1);
+    {
+      buf = tparam (TS_set_scroll_region, 0, 0, start, stop - 1);
+    }
   else if (TS_set_scroll_region_1)
-    buf = tparam (TS_set_scroll_region_1, 0, 0,
-		  FRAME_HEIGHT (sf), start,
-		  FRAME_HEIGHT (sf) - stop,
-		  FRAME_HEIGHT (sf));
+    {
+      buf = tparam (TS_set_scroll_region_1, 0, 0,
+		    FRAME_HEIGHT (sf), start,
+		    FRAME_HEIGHT (sf) - stop,
+		    FRAME_HEIGHT (sf));
+    }
   else
-    buf = tparam (TS_set_window, 0, 0, start, 0, stop, FRAME_WIDTH (sf));
-  
+    {
+      buf = tparam (TS_set_window, 0, 0, start, 0, stop, FRAME_WIDTH (sf));
+    }
   OUTPUT (buf);
   xfree (buf);
   losecursor ();
 }
-
 
-static void
+void
 turn_on_insert ()
 {
   if (!insert_mode)
@@ -606,7 +610,7 @@ turn_off_highlight ()
     }
 }
 
-static void
+void
 turn_on_highlight ()
 {
   if (TN_standout_width < 0)
@@ -632,11 +636,7 @@ toggle_highlight ()
 static void
 tty_hide_cursor ()
 {
-  if (tty_cursor_hidden == 0)
-    {
-      tty_cursor_hidden = 1;
-      OUTPUT_IF (TS_cursor_invisible);
-    }
+  OUTPUT_IF (TS_cursor_invisible);
 }
 
 
@@ -645,12 +645,8 @@ tty_hide_cursor ()
 static void
 tty_show_cursor ()
 {
-  if (tty_cursor_hidden)
-    {
-      tty_cursor_hidden = 0;
-      OUTPUT_IF (TS_cursor_normal);
-      OUTPUT_IF (TS_cursor_visible);
-    }
+  OUTPUT_IF (TS_cursor_normal);
+  OUTPUT_IF (TS_cursor_visible);
 }
 
 
@@ -693,13 +689,12 @@ highlight_if_desired ()
 /* Write a standout marker or end-standout marker at the front of the line
    at vertical position vpos.  */
 
-static void
+void
 write_standout_marker (flag, vpos)
      int flag, vpos;
 {
-  if (flag
-      || (TS_end_standout_mode && !TF_teleray && !se_is_so
-	  && !(TF_xs && TN_standout_width == 0)))
+  if (flag || (TS_end_standout_mode && !TF_teleray && !se_is_so
+	       && !(TF_xs && TN_standout_width == 0)))
     {
       cmgoto (vpos, 0);
       cmplus (TN_standout_width);
@@ -1080,7 +1075,6 @@ write_glyphs (string, len)
     }
 
   turn_off_insert ();
-  tty_hide_cursor ();
 
   /* Don't dare write in last column of bottom line, if Auto-Wrap,
      since that would scroll the whole frame on some terminals.  */
@@ -1692,7 +1686,7 @@ term_get_fkeys_1 ()
       char *sequence = tgetstr (keys[i].cap, address);
       if (sequence)
 	Fdefine_key (Vfunction_key_map, build_string (sequence),
-		     Fmake_vector (make_number (1),
+		     Fmake_vector (make_fixnum (1),
 				   intern (keys[i].name)));
     }
 
@@ -1709,13 +1703,13 @@ term_get_fkeys_1 ()
     if (k_semi)
       {
 	Fdefine_key (Vfunction_key_map, build_string (k_semi),
-		     Fmake_vector (make_number (1), intern ("f10")));
+		     Fmake_vector (make_fixnum (1), intern ("f10")));
 	k0_name = "f0";
       }
 
     if (k0)
       Fdefine_key (Vfunction_key_map, build_string (k0),
-		   Fmake_vector (make_number (1), intern (k0_name)));
+		   Fmake_vector (make_fixnum (1), intern (k0_name)));
   }
 
   /* Set up cookies for numbered function keys above f10. */
@@ -1738,7 +1732,7 @@ term_get_fkeys_1 ()
 	    {
 	      sprintf (fkey, "f%d", i);
 	      Fdefine_key (Vfunction_key_map, build_string (sequence),
-			   Fmake_vector (make_number (1),
+			   Fmake_vector (make_fixnum (1),
 					 intern (fkey)));
 	    }
 	}
@@ -1755,7 +1749,7 @@ term_get_fkeys_1 ()
 	  char *sequence = tgetstr (cap2, address);			\
 	  if (sequence)							\
 	    Fdefine_key (Vfunction_key_map, build_string (sequence),	\
-			 Fmake_vector (make_number (1),	\
+			 Fmake_vector (make_fixnum (1),	\
 				       intern (sym)));	\
 	}
 	  
@@ -1944,14 +1938,14 @@ produce_special_glyphs (it, what)
   temp_it.dp = NULL;
   temp_it.what = IT_CHARACTER;
   temp_it.len = 1;
-  temp_it.object = make_number (0);
+  temp_it.object = make_fixnum (0);
   bzero (&temp_it.current, sizeof temp_it.current);
 
   if (what == IT_CONTINUATION)
     {
       /* Continuation glyph.  */
       if (it->dp
-	  && INTEGERP (DISP_CONTINUE_GLYPH (it->dp))
+	  && FIXNUMP (DISP_CONTINUE_GLYPH (it->dp))
 	  && GLYPH_CHAR_VALID_P (XINT (DISP_CONTINUE_GLYPH (it->dp))))
 	{
 	  temp_it.c = FAST_GLYPH_CHAR (XINT (DISP_CONTINUE_GLYPH (it->dp)));
@@ -1968,7 +1962,7 @@ produce_special_glyphs (it, what)
     {
       /* Truncation glyph.  */
       if (it->dp
-	  && INTEGERP (DISP_TRUNC_GLYPH (it->dp))
+	  && FIXNUMP (DISP_TRUNC_GLYPH (it->dp))
 	  && GLYPH_CHAR_VALID_P (XINT (DISP_TRUNC_GLYPH (it->dp))))
 	{
 	  temp_it.c = FAST_GLYPH_CHAR (XINT (DISP_TRUNC_GLYPH (it->dp)));
@@ -2176,8 +2170,8 @@ turn_off_face (f, face_id)
 
 DEFUN ("tty-display-color-p", Ftty_display_color_p, Stty_display_color_p,
        0, 1, 0,
-       /* Return non-nil if TTY can display colors on FRAME.  */
-       (frame))
+  "Return non-nil if TTY can display colors on FRAME.")
+     (frame)
      Lisp_Object frame;
 {
   return TN_max_colors > 0 ? Qt : Qnil;
@@ -2608,18 +2602,18 @@ fatal (str, arg1, arg2)
 void
 syms_of_term ()
 {
-  DEFVAR_BOOL ("system-uses-terminfo", &system_uses_terminfo
-    /* Non-nil means the system uses terminfo rather than termcap.
-This variable can be used by terminal emulator packages.  */);
+  DEFVAR_BOOL ("system-uses-terminfo", &system_uses_terminfo,
+    "Non-nil means the system uses terminfo rather than termcap.\n\
+This variable can be used by terminal emulator packages.");
 #ifdef TERMINFO
   system_uses_terminfo = 1;
 #else
   system_uses_terminfo = 0;
 #endif
 
-  DEFVAR_LISP ("ring-bell-function", &Vring_bell_function
-    /* Non-nil means call this function to ring the bell.
-The function should accept no arguments.  */);
+  DEFVAR_LISP ("ring-bell-function", &Vring_bell_function,
+    "Non-nil means call this function to ring the bell.\n\
+The function should accept no arguments.");
   Vring_bell_function = Qnil;
 
   defsubr (&Stty_display_color_p);

@@ -1,5 +1,5 @@
 /* sound.c -- sound support.
-   Copyright (C) 1998, 1999, 2001 Free Software Foundation.
+   Copyright (C) 1998, 1999 Free Software Foundation.
 
 This file is part of GNU Emacs.
 
@@ -25,19 +25,12 @@ Boston, MA 02111-1307, USA.  */
 
 #if defined HAVE_SOUND
 
+#include <lisp.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <dispextern.h>
 #include <errno.h>
-#include "lisp.h"
-#include "dispextern.h"
-#include "atimer.h"
-#include <signal.h>
-#include "syssignal.h"
-
-#ifndef MSDOS
-#include <sys/ioctl.h>
-#endif
 
 /* FreeBSD has machine/soundcard.h.  Voxware sound driver docs mention
    sys/soundcard.h.  So, let's try whatever's there.  */
@@ -49,6 +42,7 @@ Boston, MA 02111-1307, USA.  */
 #include <sys/soundcard.h>
 #endif
 #ifdef HAVE_SOUNDCARD_H
+#include <sys/ioctl.h>
 #include <soundcard.h>
 #endif
 
@@ -56,6 +50,8 @@ Boston, MA 02111-1307, USA.  */
 #define DEFAULT_SOUND_DEVICE "/dev/dsp"
 #endif
 
+#define max(X, Y) ((X) > (Y) ? (X) : (Y))
+#define min(X, Y) ((X) < (Y) ? (X) : (Y))
 #define abs(X)    ((X) < 0 ? -(X) : (X))
 
 /* Structure forward declarations.  */
@@ -314,7 +310,7 @@ parse_sound (sound, attrs)
   /* Volume must be in the range 0..100 or unspecified.  */
   if (!NILP (attrs[SOUND_VOLUME]))
     {
-      if (INTEGERP (attrs[SOUND_VOLUME]))
+      if (FIXNUMP (attrs[SOUND_VOLUME]))
 	{
 	  if (XINT (attrs[SOUND_VOLUME]) < 0
 	      || XINT (attrs[SOUND_VOLUME]) > 100)
@@ -415,7 +411,7 @@ a system-dependent default device name is used.")
     {
       /* Open the sound file.  */
       s.fd = openp (Fcons (Vdata_directory, Qnil),
-		    attrs[SOUND_FILE], Qnil, &file, 0);
+		     attrs[SOUND_FILE], "", &file, 0);
       if (s.fd < 0)
 	sound_perror ("Open sound file");
 
@@ -442,7 +438,7 @@ a system-dependent default device name is used.")
       strcpy (sd.file, XSTRING (attrs[SOUND_DEVICE])->data);
     }
   
-  if (INTEGERP (attrs[SOUND_VOLUME]))
+  if (FIXNUMP (attrs[SOUND_VOLUME]))
     sd.volume = XFASTINT (attrs[SOUND_VOLUME]);
   else if (FLOATP (attrs[SOUND_VOLUME]))
     sd.volume = XFLOAT_DATA (attrs[SOUND_VOLUME]) * 100;
@@ -768,14 +764,6 @@ vox_configure (sd)
   
   xassert (sd->fd >= 0);
 
-  /* On GNU/Linux, it seems that the device driver doesn't like to be
-     interrupted by a signal.  Block the ones we know to cause
-     troubles.  */
-  turn_on_atimers (0);
-#ifdef SIGIO
-  sigblock (sigmask (SIGIO));
-#endif
-
   val = sd->format;
   if (ioctl (sd->fd, SNDCTL_DSP_SETFMT, &sd->format) < 0
       || val != sd->format)
@@ -803,11 +791,6 @@ vox_configure (sd)
       /* This may fail if there is no mixer.  Ignore the failure.  */
       ioctl (sd->fd, SOUND_MIXER_WRITE_PCM, &volume);
     }
-  
-  turn_on_atimers (1);
-#ifdef SIGIO
-  sigunblock (sigmask (SIGIO));
-#endif
 }
 
 
@@ -819,21 +802,8 @@ vox_close (sd)
 {
   if (sd->fd >= 0)
     {
-      /* On GNU/Linux, it seems that the device driver doesn't like to
-	 be interrupted by a signal.  Block the ones we know to cause
-	 troubles.  */
-#ifdef SIGIO
-      sigblock (sigmask (SIGIO));
-#endif
-      turn_on_atimers (0);
-      
       /* Flush sound data, and reset the device.  */
       ioctl (sd->fd, SNDCTL_DSP_SYNC, NULL);
-      
-      turn_on_atimers (1);
-#ifdef SIGIO
-      sigunblock (sigmask (SIGIO));
-#endif
 
       /* Close the device.  */
       emacs_close (sd->fd);

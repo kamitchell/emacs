@@ -25,7 +25,6 @@ Boston, MA 02111-1307, USA.  */
 #include "commands.h"
 #include "buffer.h"
 #include "charset.h"
-#include "keymap.h"
 
 /* Make syntax table lookup grant data in gl_state.  */
 #define SYNTAX_ENTRY_VIA_PROPERTY
@@ -134,17 +133,17 @@ update_syntax_table (charpos, count, init, object)
 
   if (init)
     {
-      gl_state.old_prop = Qnil;
       gl_state.start = gl_state.b_property;
       gl_state.stop = gl_state.e_property;
-      i = interval_of (charpos, object);
-      gl_state.backward_i = gl_state.forward_i = i;
+      gl_state.forward_i = interval_of (charpos, object);
+      i = gl_state.backward_i = gl_state.forward_i;
+      gl_state.left_ok = gl_state.right_ok = 1;
       invalidate = 0;
       if (NULL_INTERVAL_P (i))
 	return;
       /* interval_of updates only ->position of the return value, so
 	 update the parents manually to speed up update_interval.  */
-      while (!NULL_PARENT (i))
+      while (!NULL_PARENT (i)) 
 	{
 	  if (AM_RIGHT_CHILD (i))
 	    INTERVAL_PARENT (i)->position = i->position
@@ -157,7 +156,7 @@ update_syntax_table (charpos, count, init, object)
 	  i = INTERVAL_PARENT (i);
 	}
       i = gl_state.forward_i;
-      gl_state.b_property = i->position - gl_state.offset;
+      gl_state.b_property = i->position - 1 - gl_state.offset;
       gl_state.e_property = INTERVAL_LAST_POS (i) - gl_state.offset;
       goto update;
     }
@@ -173,9 +172,10 @@ update_syntax_table (charpos, count, init, object)
 	error ("Error in syntax_table logic for intervals <-");
       /* Update the interval.  */
       i = update_interval (i, charpos);
-      if (INTERVAL_LAST_POS (i) != gl_state.b_property)
+      if (!gl_state.left_ok || oldi->position != INTERVAL_LAST_POS (i))
 	{
 	  invalidate = 0;
+	  gl_state.right_ok = 1;	/* Invalidate the other end.  */
 	  gl_state.forward_i = i;
 	  gl_state.e_property = INTERVAL_LAST_POS (i) - gl_state.offset;
 	}
@@ -186,12 +186,18 @@ update_syntax_table (charpos, count, init, object)
 	error ("Error in syntax_table logic for intervals ->");
       /* Update the interval.  */
       i = update_interval (i, charpos);
-      if (i->position != gl_state.e_property)
+      if (!gl_state.right_ok || i->position != INTERVAL_LAST_POS (oldi))
 	{
 	  invalidate = 0;
+	  gl_state.left_ok = 1;		/* Invalidate the other end.  */
 	  gl_state.backward_i = i;
-	  gl_state.b_property = i->position - gl_state.offset;
+	  gl_state.b_property = i->position - 1 - gl_state.offset;
 	}
+    }
+  else if (count > 0 ? gl_state.right_ok : gl_state.left_ok)
+    {
+      /* We do not need to recalculate tmp_table.  */
+      tmp_table = gl_state.old_prop;
     }
 
   update:
@@ -206,33 +212,32 @@ update_syntax_table (charpos, count, init, object)
       if (count > 0)
 	{
 	  gl_state.backward_i = i;
-	  gl_state.b_property = i->position - gl_state.offset;
-	}
-      else
+	  gl_state.left_ok = 1;		/* Invalidate the other end.  */
+	  gl_state.b_property = i->position - 1 - gl_state.offset;
+	} 
+      else 
 	{
-	  gl_state.forward_i = i;
+	  gl_state.forward_i = i;	
+	  gl_state.right_ok = 1;	/* Invalidate the other end.  */
 	  gl_state.e_property = INTERVAL_LAST_POS (i) - gl_state.offset;
 	}
     }
 
-  if (!EQ (tmp_table, gl_state.old_prop))
+  gl_state.current_syntax_table = tmp_table;
+  gl_state.old_prop = tmp_table;
+  if (EQ (Fsyntax_table_p (tmp_table), Qt))
     {
-      gl_state.current_syntax_table = tmp_table;
-      gl_state.old_prop = tmp_table;
-      if (EQ (Fsyntax_table_p (tmp_table), Qt))
-	{
-	  gl_state.use_global = 0;
-	} 
-      else if (CONSP (tmp_table))
-	{
-	  gl_state.use_global = 1;
-	  gl_state.global_code = tmp_table;
-	}
-      else 
-	{
-	  gl_state.use_global = 0;
-	  gl_state.current_syntax_table = current_buffer->syntax_table;
-	}
+      gl_state.use_global = 0;
+    } 
+  else if (CONSP (tmp_table))
+    {
+      gl_state.use_global = 1;
+      gl_state.global_code = tmp_table;
+    }
+  else 
+    {
+      gl_state.use_global = 0;
+      gl_state.current_syntax_table = current_buffer->syntax_table;
     }
 
   while (!NULL_INTERVAL_P (i))
@@ -240,39 +245,42 @@ update_syntax_table (charpos, count, init, object)
       if (cnt && !EQ (tmp_table, textget (i->plist, Qsyntax_table)))
 	{
 	  if (count > 0)
-	    {
-	      gl_state.e_property = i->position - gl_state.offset;
-	      gl_state.forward_i = i;
-	    }
-	  else
-	    {
-	      gl_state.b_property = i->position + LENGTH (i) - gl_state.offset;
-	      gl_state.backward_i = i;
-	    }
-	  return;
+	    gl_state.right_ok = 0;
+	  else 
+	    gl_state.left_ok = 0;
+	  break;	  
 	}
       else if (cnt == INTERVALS_AT_ONCE) 
 	{
 	  if (count > 0)
-	    {
-	      gl_state.e_property = i->position + LENGTH (i) - gl_state.offset;
-	      gl_state.forward_i = i;
-	    }
-	  else
-	    {
-	      gl_state.b_property = i->position - gl_state.offset;
-	      gl_state.backward_i = i;
-	    }
-	  return;
+	    gl_state.right_ok = 1;
+	  else 
+	    gl_state.left_ok = 1;
+	  break;
 	}
       cnt++;
       i = count > 0 ? next_interval (i) : previous_interval (i);
     }
-  eassert (NULL_INTERVAL_P (i)); /* This property goes to the end.  */
-  if (count > 0)
-    gl_state.e_property = gl_state.stop;
-  else
-    gl_state.b_property = gl_state.start;
+  if (NULL_INTERVAL_P (i)) 
+    {					/* This property goes to the end.  */
+      if (count > 0)
+	gl_state.e_property = gl_state.stop;
+      else
+	gl_state.b_property = gl_state.start;
+    } 
+  else 
+    {
+      if (count > 0) 
+	{
+	  gl_state.e_property = i->position - gl_state.offset;
+	  gl_state.forward_i = i;
+	}
+      else 
+	{
+	  gl_state.b_property = i->position + LENGTH (i) - 1 - gl_state.offset;
+	  gl_state.backward_i = i;
+	}
+    }    
 }
 
 /* Returns TRUE if char at CHARPOS is quoted.
@@ -333,15 +341,9 @@ dec_bytepos (bytepos)
   return bytepos;
 }
 
-/* Return a defun-start position before before POS and not too far before.
-   It should be the last one before POS, or nearly the last.
-
-   When open_paren_in_column_0_is_defun_start is nonzero,
-   the beginning of every line is treated as a defun-start.
-
-   We record the information about where the scan started
-   and what its result was, so that another call in the same area
-   can return the same value very quickly.
+/* Find a defun-start that is the last one before POS (or nearly the last).
+   We record what we find, so that another call in the same area
+   can return the same value right away.  
 
    There is no promise at which position the global syntax data is
    valid on return from the subroutine, so the caller should explicitly
@@ -873,7 +875,7 @@ are listed in the documentation of `modify-syntax-entry'.")
   gl_state.use_global = 0;
   CHECK_NUMBER (character, 0);
   char_int = XINT (character);
-  return make_number (syntax_code_spec[(int) SYNTAX (char_int)]);
+  return make_fixnum (syntax_code_spec[(int) SYNTAX (char_int)]);
 }
 
 DEFUN ("matching-paren", Fmatching_paren, Smatching_paren, 1, 1, 0,
@@ -966,7 +968,7 @@ text property.")
     return XVECTOR (Vsyntax_code_object)->contents[val];
   else
     /* Since we can't use a shared object, let's make a new one.  */
-    return Fcons (make_number (val), match);
+    return Fcons (make_fixnum (val), match);
 }
 
 /* This comment supplies the doc string for modify-syntax-entry,
@@ -1043,7 +1045,7 @@ describe_syntax (value)
   char str[2];
   Lisp_Object first, match_lisp;
 
-  Findent_to (make_number (16), make_number (1));
+  Findent_to (make_fixnum (16), make_fixnum (1));
 
   if (NILP (value))
     {
@@ -1066,7 +1068,7 @@ describe_syntax (value)
   first = XCAR (value);
   match_lisp = XCDR (value);
 
-  if (!INTEGERP (first) || !(NILP (match_lisp) || INTEGERP (match_lisp)))
+  if (!FIXNUMP (first) || !(NILP (match_lisp) || FIXNUMP (match_lisp)))
     {
       insert_string ("invalid\n");
       return;
@@ -1331,7 +1333,7 @@ and the function returns nil.  Field boundaries are not noticed if\n\
     val = XINT (count) > 0 ? ZV : BEGV;
 
   /* Avoid jumping out of an input field.  */
-  val = XFASTINT (Fconstrain_to_field (make_number (val), make_number (PT),
+  val = XFASTINT (Fconstrain_to_field (make_fixnum (val), make_fixnum (PT),
 				       Qt, Qnil, Qnil));
   
   SET_PT (val);
@@ -1687,7 +1689,7 @@ skip_chars (forwardp, syntaxp, string, lim)
     SET_PT_BOTH (pos, pos_byte);
     immediate_quit = 0;
 
-    return make_number (PT - start_point);
+    return make_fixnum (PT - start_point);
   }
 }
 
@@ -1920,6 +1922,11 @@ between them, return t; otherwise return nil.")
 	  DEC_BOTH (from, from_byte);
 	  /* char_quoted does UPDATE_SYNTAX_TABLE_BACKWARD (from).  */
 	  quoted = char_quoted (from, from_byte);
+	  if (quoted)
+	    {
+	      DEC_BOTH (from, from_byte);
+	      goto leave;
+	    }
 	  c = FETCH_CHAR (from_byte);
 	  code = SYNTAX (c);
 	  comstyle = 0;
@@ -1996,7 +2003,7 @@ between them, return t; otherwise return nil.")
 		  break;
 		}
 	    }
-	  else if (code != Swhitespace || quoted)
+	  else if (code != Swhitespace)
 	    {
 	    leave:
 	      immediate_quit = 0;
@@ -2015,7 +2022,7 @@ between them, return t; otherwise return nil.")
 }
 
 /* Return syntax code of character C if C is a single byte character
-   or `multibyte_symbol_p' is zero.  Otherwise, return Ssymbol.  */
+   or `multibyte_symbol_p' is zero.  Otherwise, retrun Ssymbol.  */
 
 #define SYNTAX_WITH_MULTIBYTE_CHECK(c)			\
   ((SINGLE_BYTE_CHAR_P (c) || !multibyte_symbol_p)	\
@@ -2171,8 +2178,8 @@ scan_lists (from, count, depth, sexpflag)
 	      if (depth < min_depth)
 		Fsignal (Qscan_error,
 			 Fcons (build_string ("Containing expression ends prematurely"),
-				Fcons (make_number (last_good),
-				       Fcons (make_number (from), Qnil))));
+				Fcons (make_fixnum (last_good),
+				       Fcons (make_fixnum (from), Qnil))));
 	      break;
 
 	    case Sstring:
@@ -2317,8 +2324,8 @@ scan_lists (from, count, depth, sexpflag)
 	      if (depth < min_depth)
 		Fsignal (Qscan_error,
 			 Fcons (build_string ("Containing expression ends prematurely"),
-				Fcons (make_number (last_good),
-				       Fcons (make_number (from), Qnil))));
+				Fcons (make_fixnum (last_good),
+				       Fcons (make_fixnum (from), Qnil))));
 	      break;
 
 	    case Sendcomment:
@@ -2392,8 +2399,8 @@ scan_lists (from, count, depth, sexpflag)
  lose:
   Fsignal (Qscan_error,
 	   Fcons (build_string ("Unbalanced parentheses"),
-		  Fcons (make_number (last_good),
-			 Fcons (make_number (from), Qnil))));
+		  Fcons (make_fixnum (last_good),
+			 Fcons (make_fixnum (from), Qnil))));
 
   /* NOTREACHED */
 }
@@ -2564,13 +2571,13 @@ do { prev_from = from;				\
       tem = Fcar (oldstate);
       /* Check whether we are inside string_fence-style string: */
       state.instring = (!NILP (tem) 
-			? (INTEGERP (tem) ? XINT (tem) : ST_STRING_STYLE) 
+			? (FIXNUMP (tem) ? XINT (tem) : ST_STRING_STYLE) 
 			: -1);
 
       oldstate = Fcdr (oldstate);
       tem = Fcar (oldstate);
       state.incomment = (!NILP (tem)
-			 ? (INTEGERP (tem) ? XINT (tem) : -1)
+			 ? (FIXNUMP (tem) ? XINT (tem) : -1)
 			 : 0);
 
       oldstate = Fcdr (oldstate);
@@ -2829,7 +2836,7 @@ do { prev_from = from;				\
   state.location = from;
   state.levelstarts = Qnil;
   while (--curlevel >= levelstart)
-      state.levelstarts = Fcons (make_number (curlevel->last),
+      state.levelstarts = Fcons (make_fixnum (curlevel->last),
 				 state.levelstarts);
   immediate_quit = 0;
 
@@ -2899,24 +2906,24 @@ DEFUN ("parse-partial-sexp", Fparse_partial_sexp, Sparse_partial_sexp, 2, 6, 0,
 
   SET_PT (state.location);
   
-  return Fcons (make_number (state.depth),
-	   Fcons (state.prevlevelstart < 0 ? Qnil : make_number (state.prevlevelstart),
-	     Fcons (state.thislevelstart < 0 ? Qnil : make_number (state.thislevelstart),
+  return Fcons (make_fixnum (state.depth),
+	   Fcons (state.prevlevelstart < 0 ? Qnil : make_fixnum (state.prevlevelstart),
+	     Fcons (state.thislevelstart < 0 ? Qnil : make_fixnum (state.thislevelstart),
 	       Fcons (state.instring >= 0 
 		      ? (state.instring == ST_STRING_STYLE 
-			 ? Qt : make_number (state.instring)) : Qnil,
+			 ? Qt : make_fixnum (state.instring)) : Qnil,
 		 Fcons (state.incomment < 0 ? Qt :
 			(state.incomment == 0 ? Qnil :
-			 make_number (state.incomment)),
+			 make_fixnum (state.incomment)),
 		   Fcons (state.quoted ? Qt : Qnil,
-		     Fcons (make_number (state.mindepth),
+		     Fcons (make_fixnum (state.mindepth),
 		       Fcons ((state.comstyle 
 			       ? (state.comstyle == ST_COMMENT_STYLE
 				  ? Qsyntax_table : Qt) :
 			       Qnil),
 			      Fcons (((state.incomment
 				       || (state.instring >= 0))
-				      ? make_number (state.comstr_start)
+				      ? make_fixnum (state.comstr_start)
 				      : Qnil),
 				     Fcons (state.levelstarts, Qnil))))))))));
 }
@@ -2937,14 +2944,14 @@ init_syntax_once ()
   Qchar_table_extra_slots = intern ("char-table-extra-slots");
 
   /* Create objects which can be shared among syntax tables.  */
-  Vsyntax_code_object = Fmake_vector (make_number (Smax), Qnil);
+  Vsyntax_code_object = Fmake_vector (make_fixnum (Smax), Qnil);
   for (i = 0; i < XVECTOR (Vsyntax_code_object)->size; i++)
     XVECTOR (Vsyntax_code_object)->contents[i]
-      = Fcons (make_number (i), Qnil);
+      = Fcons (make_fixnum (i), Qnil);
 
   /* Now we are ready to set up this property, so we can
      create syntax tables.  */
-  Fput (Qsyntax_table, Qchar_table_extra_slots, make_number (0));
+  Fput (Qsyntax_table, Qchar_table_extra_slots, make_fixnum (0));
 
   temp = XVECTOR (Vsyntax_code_object)->contents[(int) Swhitespace];
 
@@ -2962,21 +2969,21 @@ init_syntax_once ()
   SET_RAW_SYNTAX_ENTRY (Vstandard_syntax_table, '%', temp);
 
   SET_RAW_SYNTAX_ENTRY (Vstandard_syntax_table, '(',
-			Fcons (make_number (Sopen), make_number (')')));
+			Fcons (make_fixnum (Sopen), make_fixnum (')')));
   SET_RAW_SYNTAX_ENTRY (Vstandard_syntax_table, ')',
-			Fcons (make_number (Sclose), make_number ('(')));
+			Fcons (make_fixnum (Sclose), make_fixnum ('(')));
   SET_RAW_SYNTAX_ENTRY (Vstandard_syntax_table, '[',
-			Fcons (make_number (Sopen), make_number (']')));
+			Fcons (make_fixnum (Sopen), make_fixnum (']')));
   SET_RAW_SYNTAX_ENTRY (Vstandard_syntax_table, ']',
-			Fcons (make_number (Sclose), make_number ('[')));
+			Fcons (make_fixnum (Sclose), make_fixnum ('[')));
   SET_RAW_SYNTAX_ENTRY (Vstandard_syntax_table, '{',
-			Fcons (make_number (Sopen), make_number ('}')));
+			Fcons (make_fixnum (Sopen), make_fixnum ('}')));
   SET_RAW_SYNTAX_ENTRY (Vstandard_syntax_table, '}',
-			Fcons (make_number (Sclose), make_number ('{')));
+			Fcons (make_fixnum (Sclose), make_fixnum ('{')));
   SET_RAW_SYNTAX_ENTRY (Vstandard_syntax_table, '"',
-			Fcons (make_number ((int) Sstring), Qnil));
+			Fcons (make_fixnum ((int) Sstring), Qnil));
   SET_RAW_SYNTAX_ENTRY (Vstandard_syntax_table, '\\',
-			Fcons (make_number ((int) Sescape), Qnil));
+			Fcons (make_fixnum ((int) Sescape), Qnil));
 
   temp = XVECTOR (Vsyntax_code_object)->contents[(int) Ssymbol];
   for (i = 0; i < 10; i++)
@@ -3017,10 +3024,11 @@ syms_of_syntax ()
     "Non-nil means `forward-sexp', etc., should treat comments as whitespace.");
 
   DEFVAR_BOOL ("parse-sexp-lookup-properties", &parse_sexp_lookup_properties,
-    "Non-nil means `forward-sexp', etc., obey `syntax-table' property.\n\
-Otherwise, that text property is simply ignored.\n\
-See the info node `(elisp)Syntax Properties' for a description of the\n\
-`syntax-table' property.");
+    "Non-nil means `forward-sexp', etc., grant `syntax-table' property.\n\
+The value of this property should be either a syntax table, or a cons\n\
+of the form (SYNTAXCODE . MATCHCHAR), SYNTAXCODE being the numeric\n\
+syntax code, MATCHCHAR being nil or the character to match (which is\n\
+relevant only for open/close type.");
 
   words_include_escapes = 0;
   DEFVAR_BOOL ("words-include-escapes", &words_include_escapes,

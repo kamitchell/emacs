@@ -98,6 +98,8 @@ extern struct re_pattern_buffer *compile_pattern ();
 /* From filemode.c.  Can't go in Lisp.h because of `stat'.  */
 extern void filemodestring P_ ((struct stat *, char *));
 
+#define min(a, b) ((a) < (b) ? (a) : (b))
+
 /* if system does not have symbolic links, it does not have lstat.
    In that case, use ordinary stat instead.  */
 
@@ -194,8 +196,8 @@ directory_files_internal (directory, full, match, nosort, attrs)
      file-attributes on filenames, both of which can throw, so we must
      do a proper unwind-protect.  */
   record_unwind_protect (directory_files_internal_unwind,
-			 Fcons (make_number (((unsigned long) d) >> 16),
-				make_number (((unsigned long) d) & 0xffff)));
+			 Fcons (make_fixnum (((unsigned long) d) >> 16),
+				make_fixnum (((unsigned long) d) & 0xffff)));
 
   directory_nbytes = STRING_BYTES (XSTRING (directory));
   re_match_object = Qt;
@@ -404,10 +406,7 @@ DEFUN ("file-name-completion", Ffile_name_completion, Sfile_name_completion,
 Returns the longest string\n\
 common to all file names in DIRECTORY that start with FILE.\n\
 If there is only one and FILE matches it exactly, returns t.\n\
-Returns nil if DIR contains no name starting with FILE.\n\
-\n\
-This function ignores some of the possible completions as\n\
-determined by the variable `completion-ignored-extensions', which see.")
+Returns nil if DIR contains no name starting with FILE.")
   (file, directory)
      Lisp_Object file, directory;
 {
@@ -558,31 +557,6 @@ file_name_completion (file, dirname, all_flag, ver_flag)
 		 actually in the way in a directory contains only one file.  */
 	      if (!passcount && TRIVIAL_DIRECTORY_ENTRY (dp->d_name))
 		continue;
-	      if (!passcount && len > XSTRING (encoded_file)->size)
-		/* Ignore directories if they match an element of
-		   completion-ignored-extensions which ends in a slash.  */
-		for (tem = Vcompletion_ignored_extensions;
-		     CONSP (tem); tem = XCDR (tem))
-		  {
-		    int elt_len;
-
-		    elt = XCAR (tem);
-		    if (!STRINGP (elt))
-		      continue;
-		    elt_len = XSTRING (elt)->size - 1; /* -1 for trailing / */
-		    if (elt_len <= 0)
-		      continue;
-		    p1 = XSTRING (elt)->data;
-		    if (p1[elt_len] != '/')
-		      continue;
-		    skip = len - elt_len;
-		    if (skip < 0)
-		      continue;
-
-		    if (0 <= scmp (dp->d_name + skip, p1, elt_len))
-		      continue;
-		    break;
-		  }
 	    }
 	  else
             {
@@ -621,8 +595,7 @@ file_name_completion (file, dirname, all_flag, ver_flag)
 	      for (regexps = Vcompletion_regexp_list; CONSP (regexps);
 		   regexps = XCDR (regexps))
 		{
-		  tem = Fstring_match (XCAR (regexps),
-				       make_string (dp->d_name, len), zero);
+		  tem = Fstring_match (XCAR (regexps), elt, zero);
 		  if (NILP (tem))
 		    break;
 		}
@@ -720,8 +693,8 @@ file_name_completion (file, dirname, all_flag, ver_flag)
     }
   if (matchcount == 1 && bestmatchsize == XSTRING (file)->size)
     return Qt;
-  bestmatch = Fsubstring (bestmatch, make_number (0),
-			  make_number (bestmatchsize));
+  bestmatch = Fsubstring (bestmatch, make_fixnum (0),
+			  make_fixnum (bestmatchsize));
   /* Now that we got the right initial segment of BESTMATCH,
      decode it from the coding system in use.  */
   bestmatch = DECODE_FILE (bestmatch);
@@ -820,7 +793,7 @@ Returns nil if the file cannot be opened or if there is no version limit.")
   if (xabfhc.xab$w_verlimit == 32767)
     return Qnil;		/* No version limit */
   else
-    return make_number (xabfhc.xab$w_verlimit);
+    return make_fixnum (xabfhc.xab$w_verlimit);
 }
 
 #endif /* VMS */
@@ -829,8 +802,8 @@ Lisp_Object
 make_time (time)
      time_t time;
 {
-  return Fcons (make_number (time >> 16),
-		Fcons (make_number (time & 0177777), Qnil));
+  return Fcons (make_fixnum (time >> 16),
+		Fcons (make_fixnum (time & 0177777), Qnil));
 }
 
 DEFUN ("file-attributes", Ffile_attributes, Sfile_attributes, 1, 1, 0,
@@ -852,8 +825,7 @@ Otherwise, list elements are:\n\
 10. inode number.  If inode number is larger than the Emacs integer,\n\
   this is a cons cell containing two integers: first the high part,\n\
   then the low 16 bits.\n\
-11. Device number.  If it is larger than the Emacs integer, this is\n\
-  a cons cell, similar to the inode number.\n\
+11. Device number.\n\
 \n\
 If file does not exist, returns nil.")
   (filename)
@@ -893,13 +865,13 @@ If file does not exist, returns nil.")
       values[0] = Ffile_symlink_p (filename); break;
 #endif
     }
-  values[1] = make_number (s.st_nlink);
-  values[2] = make_number (s.st_uid);
-  values[3] = make_number (s.st_gid);
+  values[1] = make_fixnum (s.st_nlink);
+  values[2] = make_fixnum (s.st_uid);
+  values[3] = make_fixnum (s.st_gid);
   values[4] = make_time (s.st_atime);
   values[5] = make_time (s.st_mtime);
   values[6] = make_time (s.st_ctime);
-  values[7] = make_number (s.st_size);
+  values[7] = make_fixnum (s.st_size);
   /* If the size is out of range for an integer, return a float.  */
   if (XINT (values[7]) != s.st_size)
     values[7] = make_float ((double)s.st_size);
@@ -917,21 +889,21 @@ If file does not exist, returns nil.")
   values[9] = (s.st_gid != getegid ()) ? Qt : Qnil;
 #endif	/* BSD4_2 (or BSD4_3) */
   /* Cast -1 to avoid warning if int is not as wide as VALBITS.  */
-  if (FIXNUM_OVERFLOW_P (s.st_ino))
+  if (s.st_ino & (((EMACS_INT) (-1)) << VALBITS))
     /* To allow inode numbers larger than VALBITS, separate the bottom
        16 bits.  */
-    values[10] = Fcons (make_number (s.st_ino >> 16),
-			make_number (s.st_ino & 0xffff));
+    values[10] = Fcons (make_fixnum (s.st_ino >> 16),
+			make_fixnum (s.st_ino & 0xffff));
   else
     /* But keep the most common cases as integers.  */
-    values[10] = make_number (s.st_ino);
+    values[10] = make_fixnum (s.st_ino);
 
   /* Likewise for device.  */
-  if (FIXNUM_OVERFLOW_P (s.st_dev))
-    values[11] = Fcons (make_number (s.st_dev >> 16),
-			make_number (s.st_dev & 0xffff));
+  if (s.st_dev & (((EMACS_INT) (-1)) << VALBITS))
+    values[11] = Fcons (make_fixnum (s.st_dev >> 16),
+			make_fixnum (s.st_dev & 0xffff));
   else
-    values[11] = make_number (s.st_dev);
+    values[11] = make_fixnum (s.st_dev);
 
   return Flist (sizeof(values) / sizeof(values[0]), values);
 }
@@ -980,8 +952,6 @@ syms_of_dired ()
 
   DEFVAR_LISP ("completion-ignored-extensions", &Vcompletion_ignored_extensions,
     "*Completion ignores filenames ending in any string in this list.\n\
-Directories are ignored if they match any string in this list which\n\
-ends in a slash.\n\
 This variable does not affect lists of possible completions,\n\
 but does affect the commands that actually do completions.");
   Vcompletion_ignored_extensions = Qnil;

@@ -104,10 +104,7 @@ struct kboard
        ends before this.  This is not the same as kbd_macro_ptr, because
        we advance this to kbd_macro_ptr when a key's command is complete.
        This way, the keystrokes for "end-kbd-macro" are not included in the
-       macro.  This also allows us to throw away the events added to the
-       macro by the last command: all the events between kbd_macro_end and
-       kbd_macro_ptr belong to the last command; see
-       cancel-kbd-macro-events.  */
+       macro.  */
     Lisp_Object *kbd_macro_end;
 
     /* Allocated size of kbd_macro_buffer.  */
@@ -255,21 +252,20 @@ extern Lisp_Object item_properties;
 #define EVENT_END(event) (XCAR (XCDR (XCDR (event))))
 
 /* Extract the click count from a multi-click event.  */
-#define EVENT_CLICK_COUNT(event) (Fnth ((event), make_number (2)))
+#define EVENT_CLICK_COUNT(event) (Fnth ((event), make_fixnum (2)))
 
 /* Extract the fields of a position.  */
 #define POSN_WINDOW(posn) (XCAR (posn))
 #define POSN_BUFFER_POSN(posn) (XCAR (XCDR (posn)))
-#define POSN_BUFFER_SET_POSN(posn,x) (XSETCAR (XCDR (posn), (x)))
 #define POSN_WINDOW_POSN(posn) (XCAR (XCDR (XCDR (posn))))
 #define POSN_TIMESTAMP(posn) \
   (XCAR (XCDR (XCDR (XCDR (posn)))))
-#define POSN_SCROLLBAR_PART(posn)	(Fnth ((posn), make_number (4)))
+#define POSN_SCROLLBAR_PART(posn)	(Fnth ((posn), make_fixnum (4)))
 
 /* A cons (STRING . STRING-CHARPOS), or nil in mouse-click events.
    It's a cons if the click is over a string in the mode line.  */
 
-#define POSN_STRING(POSN) Fnth (make_number (4), (POSN))
+#define POSN_STRING(POSN) Fnth (make_fixnum (4), (POSN))
 
 /* Some of the event heads.  */
 extern Lisp_Object Qswitch_frame;
@@ -300,6 +296,8 @@ extern Lisp_Object reorder_modifiers P_ ((Lisp_Object));
 extern Lisp_Object read_char P_ ((int, int, Lisp_Object *, Lisp_Object, int *));
 /* User-supplied string to translate input characters through.  */
 extern Lisp_Object Vkeyboard_translate_table;
+
+extern Lisp_Object map_prompt P_ ((Lisp_Object));
 
 
 extern int parse_menu_item P_ ((Lisp_Object, int, int));

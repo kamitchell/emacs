@@ -33,6 +33,9 @@ Boston, MA 02111-1307, USA.  */
 #include <sys/types.h>
 #include "regex.h"
 
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#define max(a, b) ((a) > (b) ? (a) : (b))
+
 #define REGEXP_CACHE_SIZE 20
 
 /* If the regexp is non-nil, then the buffer contains the compiled form
@@ -154,7 +157,7 @@ compile_pattern_1 (cp, pattern, translate, regp, posix, multibyte)
     }
 
   cp->regexp = Qnil;
-  cp->buf.translate = (! NILP (translate) ? translate : make_number (0));
+  cp->buf.translate = (! NILP (translate) ? translate : make_fixnum (0));
   cp->posix = posix;
   cp->buf.multibyte = multibyte;
   BLOCK_INPUT;
@@ -220,7 +223,7 @@ compile_pattern (pattern, regp, translate, posix, multibyte)
       if (XSTRING (cp->regexp)->size == XSTRING (pattern)->size
 	  && STRING_MULTIBYTE (cp->regexp) == STRING_MULTIBYTE (pattern)
 	  && !NILP (Fstring_equal (cp->regexp, pattern))
-	  && EQ (cp->buf.translate, (! NILP (translate) ? translate : make_number (0)))
+	  && EQ (cp->buf.translate, (! NILP (translate) ? translate : make_fixnum (0)))
 	  && cp->posix == posix
 	  && cp->buf.multibyte == multibyte)
 	break;
@@ -410,7 +413,7 @@ string_match_1 (regexp, string, start, posix)
 	  = string_byte_to_char (string, search_regs.end[i]);
       }
 
-  return make_number (string_byte_to_char (string, val));
+  return make_fixnum (string_byte_to_char (string, val));
 }
 
 DEFUN ("string-match", Fstring_match, Sstring_match, 2, 3, 0,
@@ -755,7 +758,7 @@ scan_newline (start, start_byte, limit, limit_byte, count, allow_quit)
   /* If we are not in selective display mode,
      check only for newlines.  */
   int selective_display = (!NILP (current_buffer->selective_display)
-			   && !INTEGERP (current_buffer->selective_display));
+			   && !FIXNUMP (current_buffer->selective_display));
 
   /* The code that follows is like scan_buffer
      but checks for either newline or carriage return.  */
@@ -935,7 +938,7 @@ search_command (string, bound, noerror, count, direction, RE, posix)
 
   SET_PT (np);
 
-  return make_number (np);
+  return make_fixnum (np);
 }
 
 /* Return 1 if REGEXP it matches just one constant string.  */
@@ -959,7 +962,7 @@ trivial_regexp_p (regexp)
 	    {
 	    case '|': case '(': case ')': case '`': case '\'': case 'b':
 	    case 'B': case '<': case '>': case 'w': case 'W': case 's':
-	    case 'S': case '=': case '{': case '}':
+	    case 'S': case '=':
 	    case 'c': case 'C':	/* for categoryspec and notcategoryspec */
 	    case '1': case '2': case '3': case '4': case '5':
 	    case '6': case '7': case '8': case '9':
@@ -991,8 +994,8 @@ do						\
     if (! NILP (trt))				\
       {						\
 	Lisp_Object temp;			\
-	temp = Faref (trt, make_number (d));	\
-	if (INTEGERP (temp))			\
+	temp = Faref (trt, make_fixnum (d));	\
+	if (FIXNUMP (temp))			\
 	  out = XINT (temp);			\
 	else					\
 	  out = d;				\
@@ -1971,7 +1974,7 @@ wordify (string)
   if (SYNTAX (prev_c) == Sword)
     word_count++;
   if (!word_count)
-    return empty_string;
+    return build_string ("");
 
   adjust = - punct_count + 5 * (word_count - 1) + 4;
   if (STRING_MULTIBYTE (string))
@@ -2180,18 +2183,12 @@ FIXEDCASE and LITERAL are optional arguments.\n\
 Leaves point at end of replacement text.\n\
 \n\
 The optional fourth argument STRING can be a string to modify.\n\
-This is meaningful when the previous match was done against STRING,\n\
-using `string-match'.  When used this way, `replace-match'\n\
-creates and returns a new string made by copying STRING and replacing\n\
-the part of STRING that was matched.\n\
+In that case, this function creates and returns a new string\n\
+which is made by replacing the part of STRING that was matched.\n\
 \n\
-The optional fifth argument SUBEXP specifies a subexpression;\n\
-it says to replace just that subexpression with NEWTEXT,\n\
-rather than replacing the entire matched text.\n\
-This is, in a vague sense, the inverse of using `\\N' in NEWTEXT;\n\
-`\\N' copies subexp N into NEWTEXT, but using N as SUBEXP puts\n\
-NEWTEXT in place of subexp N.\n\
-This is useful only after a regular expression search or match,\n\
+The optional fifth argument SUBEXP specifies a subexpression of the match.\n\
+It says to replace just that subexpression instead of the whole match.\n\
+This is useful only after a regular expression search or match\n\
 since only regular expressions have distinguished subexpressions.")
   (newtext, fixedcase, literal, string, subexp)
      Lisp_Object newtext, fixedcase, literal, string, subexp;
@@ -2225,7 +2222,7 @@ since only regular expressions have distinguished subexpressions.")
       CHECK_NUMBER (subexp, 3);
       sub = XINT (subexp);
       if (sub < 0 || sub >= search_regs.num_regs)
-	args_out_of_range (subexp, make_number (search_regs.num_regs));
+	args_out_of_range (subexp, make_fixnum (search_regs.num_regs));
     }
 
   if (NILP (string))
@@ -2233,16 +2230,16 @@ since only regular expressions have distinguished subexpressions.")
       if (search_regs.start[sub] < BEGV
 	  || search_regs.start[sub] > search_regs.end[sub]
 	  || search_regs.end[sub] > ZV)
-	args_out_of_range (make_number (search_regs.start[sub]),
-			   make_number (search_regs.end[sub]));
+	args_out_of_range (make_fixnum (search_regs.start[sub]),
+			   make_fixnum (search_regs.end[sub]));
     }
   else
     {
       if (search_regs.start[sub] < 0
 	  || search_regs.start[sub] > search_regs.end[sub]
 	  || search_regs.end[sub] > XSTRING (string)->size)
-	args_out_of_range (make_number (search_regs.start[sub]),
-			   make_number (search_regs.end[sub]));
+	args_out_of_range (make_fixnum (search_regs.start[sub]),
+			   make_fixnum (search_regs.end[sub]));
     }
 
   if (NILP (fixedcase))
@@ -2327,9 +2324,9 @@ since only regular expressions have distinguished subexpressions.")
     {
       Lisp_Object before, after;
 
-      before = Fsubstring (string, make_number (0),
-			   make_number (search_regs.start[sub]));
-      after = Fsubstring (string, make_number (search_regs.end[sub]), Qnil);
+      before = Fsubstring (string, make_fixnum (0),
+			   make_fixnum (search_regs.start[sub]));
+      after = Fsubstring (string, make_fixnum (search_regs.end[sub]), Qnil);
 
       /* Substitute parts of the match into NEWTEXT
 	 if desired.  */
@@ -2384,8 +2381,8 @@ since only regular expressions have distinguished subexpressions.")
 		    middle = Qnil;
 		  accum = concat3 (accum, middle,
 				   Fsubstring (string,
-					       make_number (substart),
-					       make_number (subend)));
+					       make_fixnum (substart),
+					       make_fixnum (subend)));
 		  lastpos = pos;
 		  lastpos_byte = pos_byte;
 		}
@@ -2420,7 +2417,7 @@ since only regular expressions have distinguished subexpressions.")
       return concat3 (before, newtext, after);
     }
 
-  /* Record point, then move (quietly) to the start of the match.  */
+  /* Record point, the move (quietly) to the start of the match.  */
   if (PT >= search_regs.end[sub])
     opoint = PT - ZV;
   else if (PT > search_regs.start[sub])
@@ -2447,7 +2444,7 @@ since only regular expressions have distinguished subexpressions.")
 
       rev_tbl= (!buf_multibyte && CHAR_TABLE_P (Vnonascii_translation_table)
 		? Fchar_table_extra_slot (Vnonascii_translation_table,
-					  make_number (0))
+					  make_fixnum (0))
 		: Qnil);
 
       substed_alloc_size = length * 2 + 100;
@@ -2560,9 +2557,9 @@ since only regular expressions have distinguished subexpressions.")
   del_range (search_regs.start[sub] + inslen, search_regs.end[sub] + inslen);
 
   if (case_action == all_caps)
-    Fupcase_region (make_number (PT - inslen), make_number (PT));
+    Fupcase_region (make_fixnum (PT - inslen), make_fixnum (PT));
   else if (case_action == cap_initial)
-    Fupcase_initials_region (make_number (PT - inslen), make_number (PT));
+    Fupcase_initials_region (make_fixnum (PT - inslen), make_fixnum (PT));
 
   newpoint = PT;
 
@@ -2588,11 +2585,11 @@ match_limit (num, beginningp)
   CHECK_NUMBER (num, 0);
   n = XINT (num);
   if (n < 0 || n >= search_regs.num_regs)
-    args_out_of_range (num, make_number (search_regs.num_regs));
+    args_out_of_range (num, make_fixnum (search_regs.num_regs));
   if (search_regs.num_regs <= 0
       || search_regs.start[n] < 0)
     return Qnil;
-  return (make_number ((beginningp) ? search_regs.start[n]
+  return (make_fixnum ((beginningp) ? search_regs.start[n]
 		                    : search_regs.end[n]));
 }
 
@@ -2664,11 +2661,11 @@ to hold all the values, and if INTEGERS is non-nil, no consing is done.")
 	    {
 	      data[2 * i] = Fmake_marker ();
 	      Fset_marker (data[2 * i],
-			   make_number (start),
+			   make_fixnum (start),
 			   last_thing_searched);
 	      data[2 * i + 1] = Fmake_marker ();
 	      Fset_marker (data[2 * i + 1],
-			   make_number (search_regs.end[i]), 
+			   make_fixnum (search_regs.end[i]), 
 			   last_thing_searched);
 	    }
 	  else
@@ -2691,16 +2688,16 @@ to hold all the values, and if INTEGERS is non-nil, no consing is done.")
        i++, tail = XCDR (tail))
     {
       if (i < 2 * len + 2)
-	XSETCAR (tail, data[i]);
+	XCAR (tail) = data[i];
       else
-	XSETCAR (tail, Qnil);
+	XCAR (tail) = Qnil;
       prev = tail;
     }
 
   /* If we couldn't fit all value elements into REUSE,
      cons up the rest of them and add them to the end of REUSE.  */
   if (i < 2 * len + 2)
-    XSETCDR (prev, Flist (2 * len + 2 - i, data + i));
+    XCDR (prev) = Flist (2 * len + 2 - i, data + i);
 
   return reuse;
 }

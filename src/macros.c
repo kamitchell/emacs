@@ -26,7 +26,6 @@ Boston, MA 02111-1307, USA.  */
 #include "buffer.h"
 #include "window.h"
 #include "keyboard.h"
-#include "keymap.h"
 
 Lisp_Object Qexecute_kbd_macro, Qkbd_macro_termination_hook;
 
@@ -112,7 +111,7 @@ this begins by re-executing that macro as if you typed it again.")
 	}
       for (i = 0; i < len; i++)
 	current_kboard->kbd_macro_buffer[i]
-	  = Faref (current_kboard->Vlast_kbd_macro, make_number (i));
+	  = Faref (current_kboard->Vlast_kbd_macro, make_fixnum (i));
 
       current_kboard->kbd_macro_ptr = current_kboard->kbd_macro_buffer + len;
       current_kboard->kbd_macro_end = current_kboard->kbd_macro_ptr;
@@ -120,7 +119,7 @@ this begins by re-executing that macro as if you typed it again.")
       /* Re-execute the macro we are appending to,
 	 for consistency of behavior.  */
       Fexecute_kbd_macro (current_kboard->Vlast_kbd_macro,
-			  make_number (1));
+			  make_fixnum (1));
 
       message ("Appending to kbd macro...");
     }
@@ -178,25 +177,27 @@ void
 store_kbd_macro_char (c)
      Lisp_Object c;
 {
-  struct kboard *kb = current_kboard;
-
-  if (!NILP (kb->defining_kbd_macro))
+  if (!NILP (current_kboard->defining_kbd_macro))
     {
-      if (kb->kbd_macro_ptr - kb->kbd_macro_buffer == kb->kbd_macro_bufsize)
+      if ((current_kboard->kbd_macro_ptr
+	   - current_kboard->kbd_macro_buffer)
+	  == current_kboard->kbd_macro_bufsize)
 	{
-	  int ptr_offset, end_offset, nbytes;
-	  
-	  ptr_offset = kb->kbd_macro_ptr - kb->kbd_macro_buffer;
-	  end_offset = kb->kbd_macro_end - kb->kbd_macro_buffer;
-	  kb->kbd_macro_bufsize *= 2;
-	  nbytes = kb->kbd_macro_bufsize * sizeof *kb->kbd_macro_buffer;
-	  kb->kbd_macro_buffer
-	    = (Lisp_Object *) xrealloc (kb->kbd_macro_buffer, nbytes);
-	  kb->kbd_macro_ptr = kb->kbd_macro_buffer + ptr_offset;
-	  kb->kbd_macro_end = kb->kbd_macro_buffer + end_offset;
+	  int offset = (current_kboard->kbd_macro_ptr
+			- current_kboard->kbd_macro_buffer);
+	  current_kboard->kbd_macro_bufsize *= 2;
+	  current_kboard->kbd_macro_buffer
+	    = (Lisp_Object *)xrealloc (current_kboard->kbd_macro_buffer,
+				       (current_kboard->kbd_macro_bufsize
+					* sizeof (Lisp_Object)));
+	  current_kboard->kbd_macro_ptr
+	    = current_kboard->kbd_macro_buffer + offset;
+	  current_kboard->kbd_macro_end
+	    = (current_kboard->kbd_macro_buffer
+	       + current_kboard->kbd_macro_bufsize);
 	}
       
-      *kb->kbd_macro_ptr++ = c;
+      *current_kboard->kbd_macro_ptr++ = c;
     }
 }
 
@@ -303,7 +304,7 @@ COUNT is a repeat count, or nil for once, or 0 for infinite loop.")
     error ("Keyboard macros must be strings or vectors");
 
   tem = Fcons (Vexecuting_macro,
-	       Fcons (make_number (executing_macro_index),
+	       Fcons (make_fixnum (executing_macro_index),
 		      real_this_command));
   record_unwind_protect (pop_kbd_macro, tem);
 

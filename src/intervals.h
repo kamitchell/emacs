@@ -114,7 +114,7 @@ Boston, MA 02111-1307, USA.  */
    casts to get around this, it will break some development work in
    progress.  */
 #define SET_INTERVAL_PARENT(i,p) (eassert (!INT_LISPLIKE (p)),(i)->up_obj = 0, (i)->up.interval = (p))
-#define SET_INTERVAL_OBJECT(i,o) (eassert (!INTEGERP (o)), eassert (BUFFERP (o) || STRINGP (o)),(i)->up_obj = 1, (i)->up.obj = (o))
+#define SET_INTERVAL_OBJECT(i,o) (eassert (!FIXNUMP (o)), eassert (BUFFERP (o) || STRINGP (o)),(i)->up_obj = 1, (i)->up.obj = (o))
 #define INTERVAL_PARENT(i) (eassert((i) != 0 && (i)->up_obj == 0),(i)->up.interval)
 #define GET_INTERVAL_OBJECT(d,s) (eassert((s)->up_obj == 1), (d) = (s)->up.obj)
 
@@ -195,13 +195,21 @@ Boston, MA 02111-1307, USA.  */
 
 
 /* If PROP is the `invisible' property of a character,
-   this is 1 if the character should be treated as invisible,
-   and 2 if it is invisible but with an ellipsis.  */
+   this is 1 if the character should be treated as invisible.  */
 
 #define TEXT_PROP_MEANS_INVISIBLE(prop)				\
   (EQ (current_buffer->invisibility_spec, Qt)			\
-   ? !NILP (prop)						\
+   ? ! NILP (prop)						\
    : invisible_p (prop, current_buffer->invisibility_spec))
+
+/* If PROP is the `invisible' property of a character,
+   this is 1 if the character should be treated as invisible
+   and should have an ellipsis.  */
+
+#define TEXT_PROP_MEANS_INVISIBLE_WITH_ELLIPSIS(prop)		\
+  (EQ (current_buffer->invisibility_spec, Qt)			\
+   ? 0								\
+   : invisible_ellipsis_p (prop, current_buffer->invisibility_spec))
 
 /* Declared in alloc.c */
 
@@ -212,10 +220,7 @@ extern INTERVAL make_interval P_ ((void));
 extern INTERVAL create_root_interval P_ ((Lisp_Object));
 extern void copy_properties P_ ((INTERVAL, INTERVAL));
 extern int intervals_equal P_ ((INTERVAL, INTERVAL));
-extern void traverse_intervals P_ ((INTERVAL, int,
-				    void (*) (INTERVAL, Lisp_Object),
-				    Lisp_Object));
-extern void traverse_intervals_noorder P_ ((INTERVAL,
+extern void traverse_intervals P_ ((INTERVAL, int, int,
 				    void (*) (INTERVAL, Lisp_Object),
 				    Lisp_Object));
 extern INTERVAL split_interval_right P_ ((INTERVAL, int));
@@ -249,7 +254,7 @@ extern INTERVAL validate_interval_range P_ ((Lisp_Object, Lisp_Object *,
 					     Lisp_Object *, int));
 
 /* Defined in xdisp.c */
-extern int invisible_p P_ ((Lisp_Object, Lisp_Object));
+extern int invisible_ellipsis_p P_ ((Lisp_Object, Lisp_Object));
 
 /* Declared in textprop.c */
 

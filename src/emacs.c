@@ -51,7 +51,6 @@ Boston, MA 02111-1307, USA.  */
 #include "process.h"
 #include "termhooks.h"
 #include "keyboard.h"
-#include "keymap.h"
 
 #ifdef HAVE_SETLOCALE
 #include <locale.h>
@@ -107,9 +106,6 @@ Lisp_Object Vinstallation_directory;
 
 /* Hook run by `kill-emacs' before it does really anything.  */
 Lisp_Object Vkill_emacs_hook;
-
-/* An empty lisp string.  To avoid having to build any other.  */
-Lisp_Object empty_string;
 
 #ifdef SIGUSR1
 /* Hooks for signal USR1 and USR2 handing */
@@ -243,9 +239,7 @@ Initialization options:\n\
 Action options:\n\
 \n\
 FILE			visit FILE using find-file\n\
-+LINE FILE		visit FILE using find-file, then go to line LINE\n\
-+LINE:COLUMN FILE	visit FILE using find-file, then go to line LINE,\n\
-			    column COLUMN\n\
++LINENUM FILE		visit FILE using find-file, then go to line LINENUM\n\
 --directory, -L DIR	add DIR to variable load-path\n\
 --eval EXPR		evaluate Emacs Lisp expression EXPR\n\
 --execute EXPR		evaluate Emacs Lisp expression EXPR\n\
@@ -295,12 +289,6 @@ int fatal_error_code;
 
 /* Nonzero if handling a fatal error already */
 int fatal_error_in_progress;
-
-/* If non-null, call this function from fata_error_signal before
-   committing suicide.  */
-
-void (*fatal_error_signal_hook) P_ ((void));
-
 
 #ifdef SIGUSR1
 SIGTYPE
@@ -361,10 +349,6 @@ fatal_error_signal (sig)
 #ifndef MSDOS
   sigunblock (sigmask (fatal_error_code));
 #endif
-
-  if (fatal_error_signal_hook)
-    fatal_error_signal_hook ();
-  
   kill (getpid (), fatal_error_code);
 #endif /* not VMS */
 }
@@ -438,7 +422,7 @@ init_cmdargs (argc, argv, skip_args)
     {
       Lisp_Object found;
       int yes = openp (Vexec_path, Vinvocation_name,
-		       Vexec_suffixes, &found, 1);
+		       EXEC_SUFFIXES, &found, 1);
       if (yes == 1)
 	{
 	  /* Add /: to the front of the name
@@ -728,6 +712,7 @@ main (argc, argv, envp)
   int skip_args = 0;
 #ifndef USE_CRT_DLL
   extern int errno;
+  extern int sys_nerr;
 #endif
 #ifdef HAVE_SETRLIMIT
   struct rlimit rlim;
@@ -1163,7 +1148,7 @@ main (argc, argv, envp)
   init_eval ();
   init_data ();
 #ifdef CLASH_DETECTION
-  init_filelock ();
+  init_filelock ();;
 #endif
   init_atimer ();
   running_asynch_code = 0;
@@ -1841,7 +1826,7 @@ all of which are called before Emacs is actually killed.")
   if (STRINGP (Vauto_save_list_file_name))
     unlink (XSTRING (Vauto_save_list_file_name)->data);
 
-  exit (INTEGERP (arg) ? XINT (arg)
+  exit (FIXNUMP (arg) ? XINT (arg)
 #ifdef VMS
 	: 1
 #else
@@ -1926,13 +1911,8 @@ shut_down_emacs (sig, no_x, stuff)
   term_ntproc ();
 #endif
 
-  /* Do this only if terminating normally, we want glyph matrices
-     etc. in a core dump.  */
-  if (sig == 0 || sig == SIGTERM)
-    {
-      check_glyph_memory ();
-      check_message_stack ();
-    }
+  check_glyph_memory ();
+  check_message_stack ();
 
 #ifdef MSDOS
   dos_cleanup ();
@@ -1954,7 +1934,6 @@ This function exists on systems that use HAVE_SHM.")
   extern char my_edata[];
   Lisp_Object tem;
 
-  check_pure_size ();
   CHECK_STRING (filename, 0);
   filename = Fexpand_file_name (filename, Qnil);
 
@@ -1988,9 +1967,7 @@ You must run Emacs in batch mode in order to dump it.")
   extern char my_edata[];
   Lisp_Object tem;
   Lisp_Object symbol;
-  int count = BINDING_STACK_SIZE ();
-
-  check_pure_size ();
+  int count = specpdl_ptr - specpdl;
 
   if (! noninteractive)
     error ("Dumping Emacs works only in batch mode");
@@ -2210,9 +2187,6 @@ in other similar situations), functions placed on this hook should not\n\
 expect to be able to interact with the user.  To ask for confirmation,\n\
 see `kill-emacs-query-functions' instead.");
   Vkill_emacs_hook = Qnil;
-
-  empty_string = build_string ("");
-  staticpro (&empty_string);
 
 #ifdef SIGUSR1
   DEFVAR_LISP ("signal-USR1-hook", &Vsignal_USR1_hook,

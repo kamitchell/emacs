@@ -45,12 +45,13 @@ Boston, MA 02111-1307, USA.  */
 #include "buffer.h"
 #include "puresize.h"
 #include "keyboard.h"
-#include "keymap.h"
 
 /* Test for membership, allowing for t (actually any non-cons) to mean the
    universal set.  */
 
 #define TMEM(sym, set) (CONSP (set) ? ! NILP (Fmemq (sym, set)) : ! NILP (set))
+
+#define min(x, y) ((x) < (y) ? (x) : (y))
 
 Lisp_Object merge_properties_sticky ();
 static INTERVAL reproduce_tree P_ ((INTERVAL, INTERVAL));
@@ -188,47 +189,24 @@ intervals_equal (i0, i1)
 
 
 /* Traverse an interval tree TREE, performing FUNCTION on each node.
-   No guarantee is made about the order of traversal.
    Pass FUNCTION two args: an interval, and ARG.  */
 
 void
-traverse_intervals_noorder (tree, function, arg)
+traverse_intervals (tree, position, depth, function, arg)
      INTERVAL tree;
+     int position, depth;
      void (* function) P_ ((INTERVAL, Lisp_Object));
      Lisp_Object arg;
 {
-  /* Minimize stack usage.  */
-  while (!NULL_INTERVAL_P (tree))
-    {
-      (*function) (tree, arg);
-      if (NULL_INTERVAL_P (tree->right))
-	tree = tree->left;
-      else
-	{
-	  traverse_intervals_noorder (tree->left, function, arg);
-	  tree = tree->right;
-	}
-    }
-}
+  if (NULL_INTERVAL_P (tree))
+    return;
 
-/* Traverse an interval tree TREE, performing FUNCTION on each node.
-   Pass FUNCTION two args: an interval, and ARG.  */
-
-void
-traverse_intervals (tree, position, function, arg)
-     INTERVAL tree;
-     int position;
-     void (* function) P_ ((INTERVAL, Lisp_Object));
-     Lisp_Object arg;
-{
-  while (!NULL_INTERVAL_P (tree))
-    {
-      traverse_intervals (tree->left, position, function, arg);
-      position += LEFT_TOTAL_LENGTH (tree);
-      tree->position = position;
-      (*function) (tree, arg);
-      position += LENGTH (tree); tree = tree->right;
-    }
+  traverse_intervals (tree->left, position, depth + 1, function, arg);
+  position += LEFT_TOTAL_LENGTH (tree);
+  tree->position = position;
+  (*function) (tree, arg);
+  position += LENGTH (tree);
+  traverse_intervals (tree->right, position, depth + 1,  function, arg);
 }
 
 #if 0
@@ -259,7 +237,7 @@ search_for_interval (i, tree)
   icount = 0;
   search_interval = i;
   found_interval = NULL_INTERVAL;
-  traverse_intervals_noorder (tree, &check_for_interval, Qnil);
+  traverse_intervals (tree, 1, 0, &check_for_interval, Qnil);
   return found_interval;
 }
 
@@ -281,7 +259,7 @@ count_intervals (i)
   icount = 0;
   idepth = 0;
   zero_length = 0;
-  traverse_intervals_noorder (i, &inc_interval_count, Qnil);
+  traverse_intervals (i, 1, 0, &inc_interval_count, Qnil);
 
   return icount;
 }
@@ -308,7 +286,7 @@ root_interval (interval)
      c		  c
 */
 
-static INLINE INTERVAL
+static INTERVAL
 rotate_right (interval)
      INTERVAL interval;
 {
@@ -354,7 +332,7 @@ rotate_right (interval)
     c               c
 */
 
-static INLINE INTERVAL
+static INTERVAL
 rotate_left (interval)
      INTERVAL interval;
 {
@@ -1694,8 +1672,8 @@ graft_intervals_into_buffer (source, position, length, buffer, inherit)
 	  int saved_inhibit_modification_hooks = inhibit_modification_hooks;
 	  XSETBUFFER (buf, buffer);
 	  inhibit_modification_hooks = 1;
-	  Fset_text_properties (make_number (position),
-				make_number (position + length),
+	  Fset_text_properties (make_fixnum (position),
+				make_fixnum (position + length),
 				Qnil, buf);
 	  inhibit_modification_hooks = saved_inhibit_modification_hooks;
 	}
@@ -1989,21 +1967,21 @@ set_point_both (buffer, charpos, bytepos)
 
       if (backwards)
 	{
-	  intangible_propval = Fget_char_property (make_number (charpos),
+	  intangible_propval = Fget_char_property (make_fixnum (charpos),
 						   Qintangible, Qnil);
 
 	  /* If following char is intangible,
 	     skip back over all chars with matching intangible property.  */
 	  if (! NILP (intangible_propval))
 	    while (XINT (pos) > BUF_BEGV (buffer)
-		   && EQ (Fget_char_property (make_number (XINT (pos) - 1),
+		   && EQ (Fget_char_property (make_fixnum (XINT (pos) - 1),
 					      Qintangible, Qnil),
 			  intangible_propval))
 	      pos = Fprevious_char_property_change (pos, Qnil);
 	}
       else
 	{
-	  intangible_propval = Fget_char_property (make_number (charpos - 1),
+	  intangible_propval = Fget_char_property (make_fixnum (charpos - 1),
 						   Qintangible, Qnil);
 
 	  /* If following char is intangible,
@@ -2068,18 +2046,18 @@ set_point_both (buffer, charpos, bytepos)
 	enter_before = Qnil;
 
       if (! EQ (leave_before, enter_before) && !NILP (leave_before))
-	call2 (leave_before, make_number (old_position),
-	       make_number (charpos));
+	call2 (leave_before, make_fixnum (old_position),
+	       make_fixnum (charpos));
       if (! EQ (leave_after, enter_after) && !NILP (leave_after))
-	call2 (leave_after, make_number (old_position),
-	       make_number (charpos));
+	call2 (leave_after, make_fixnum (old_position),
+	       make_fixnum (charpos));
 
       if (! EQ (enter_before, leave_before) && !NILP (enter_before))
-	call2 (enter_before, make_number (old_position),
-	       make_number (charpos));
+	call2 (enter_before, make_fixnum (old_position),
+	       make_fixnum (charpos));
       if (! EQ (enter_after, leave_after) && !NILP (enter_after))
-	call2 (enter_after, make_number (old_position),
-	       make_number (charpos));
+	call2 (enter_after, make_fixnum (old_position),
+	       make_fixnum (charpos));
     }
 }
 
@@ -2109,7 +2087,7 @@ move_if_not_intangible (position)
 	 skip back over all chars with matching intangible property.  */
       if (! NILP (intangible_propval))
 	while (XINT (pos) > BEGV
-	       && EQ (Fget_char_property (make_number (XINT (pos) - 1),
+	       && EQ (Fget_char_property (make_fixnum (XINT (pos) - 1),
 					  Qintangible, Qnil),
 		      intangible_propval))
 	  pos = Fprevious_char_property_change (pos, Qnil);
@@ -2118,7 +2096,7 @@ move_if_not_intangible (position)
     {
       /* We want to move backward, so check the text after POSITION.  */
 
-      intangible_propval = Fget_char_property (make_number (XINT (pos) - 1),
+      intangible_propval = Fget_char_property (make_fixnum (XINT (pos) - 1),
 					       Qintangible, Qnil);
 
       /* If following char is intangible,

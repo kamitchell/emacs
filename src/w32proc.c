@@ -304,7 +304,7 @@ reader_thread (void *arg)
 static char * process_dir;
 
 static BOOL 
-create_child (char *exe, char *cmdline, char *env, int is_gui_app,
+create_child (char *exe, char *cmdline, char *env,
 	      int * pPid, child_process *cp)
 {
   STARTUPINFO start;
@@ -321,7 +321,7 @@ create_child (char *exe, char *cmdline, char *env, int is_gui_app,
   start.cb = sizeof (start);
   
 #ifdef HAVE_NTGUI
-  if (NILP (Vw32_start_process_show_window) && !is_gui_app)
+  if (NILP (Vw32_start_process_show_window))
     start.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
   else
     start.dwFlags = STARTF_USESTDHANDLES;
@@ -571,7 +571,7 @@ get_result:
 }
 
 void
-w32_executable_type (char * filename, int * is_dos_app, int * is_cygnus_app, int * is_gui_app)
+w32_executable_type (char * filename, int * is_dos_app, int * is_cygnus_app)
 {
   file_data executable;
   char * p;
@@ -579,7 +579,6 @@ w32_executable_type (char * filename, int * is_dos_app, int * is_cygnus_app, int
   /* Default values in case we can't tell for sure.  */
   *is_dos_app = FALSE;
   *is_cygnus_app = FALSE;
-  *is_gui_app = FALSE;
 
   if (!open_input_file (&executable, filename))
     return;
@@ -600,7 +599,7 @@ w32_executable_type (char * filename, int * is_dos_app, int * is_cygnus_app, int
 	 extension, which is defined in the registry.  */
       p = egetenv ("COMSPEC");
       if (p)
-	w32_executable_type (p, is_dos_app, is_cygnus_app, is_gui_app);
+	w32_executable_type (p, is_dos_app, is_cygnus_app);
     }
   else
     {
@@ -652,11 +651,6 @@ w32_executable_type (char * filename, int * is_dos_app, int * is_cygnus_app, int
 		  break;
 		}
   	    }
-
-	  /* Check whether app is marked as a console or windowed (aka
-             GUI) app.  Accept Posix and OS2 subsytem apps as console
-             apps.  */
-	  *is_gui_app = (nt_header->OptionalHeader.Subsystem == IMAGE_SUBSYSTEM_WINDOWS_GUI);
   	}
     }
   
@@ -720,7 +714,7 @@ sys_spawnve (int mode, char *cmdname, char **argv, char **envp)
   int arglen, numenv;
   int pid;
   child_process *cp;
-  int is_dos_app, is_cygnus_app, is_gui_app;
+  int is_dos_app, is_cygnus_app;
   int do_quoting = 0;
   char escape_char;
   /* We pass our process ID to our children by setting up an environment
@@ -744,7 +738,7 @@ sys_spawnve (int mode, char *cmdname, char **argv, char **envp)
       
       full = Qnil;
       GCPRO1 (program);
-      openp (Vexec_path, program, Vexec_suffixes, &full, 1);
+      openp (Vexec_path, program, EXEC_SUFFIXES, &full, 1);
       UNGCPRO;
       if (NILP (full))
 	{
@@ -763,11 +757,8 @@ sys_spawnve (int mode, char *cmdname, char **argv, char **envp)
      executable that is implicitly linked to the Cygnus dll (implying it
      was compiled with the Cygnus GNU toolchain and hence relies on
      cygwin.dll to parse the command line - we use this to decide how to
-     escape quote chars in command line args that must be quoted).
-
-     Also determine whether it is a GUI app, so that we don't hide its
-     initial window unless specifically requested.  */
-  w32_executable_type (cmdname, &is_dos_app, &is_cygnus_app, &is_gui_app);
+     escape quote chars in command line args that must be quoted). */
+  w32_executable_type (cmdname, &is_dos_app, &is_cygnus_app);
 
   /* On Windows 95, if cmdname is a DOS app, we invoke a helper
      application to start it by specifying the helper app as cmdname,
@@ -820,7 +811,7 @@ sys_spawnve (int mode, char *cmdname, char **argv, char **envp)
       do_quoting = 1;
       /* Override escape char by binding w32-quote-process-args to
 	 desired character, or use t for auto-selection.  */
-      if (INTEGERP (Vw32_quote_process_args))
+      if (FIXNUMP (Vw32_quote_process_args))
 	escape_char = XINT (Vw32_quote_process_args);
       else
 	escape_char = is_cygnus_app ? '"' : '\\';
@@ -1001,7 +992,7 @@ sys_spawnve (int mode, char *cmdname, char **argv, char **envp)
     }
   
   /* Now create the process.  */
-  if (!create_child (cmdname, cmdline, env, is_gui_app, &pid, cp))
+  if (!create_child (cmdname, cmdline, env, &pid, cp))
     {
       delete_child (cp);
       errno = ENOEXEC;
@@ -1392,19 +1383,18 @@ sys_kill (int pid, int sig)
       EnumWindows (find_child_console, (LPARAM) cp);
     }
   
-  if (sig == SIGINT || sig == SIGQUIT)
+  if (sig == SIGINT)
     {
       if (NILP (Vw32_start_process_share_console) && cp && cp->hwnd)
 	{
 	  BYTE control_scan_code = (BYTE) MapVirtualKey (VK_CONTROL, 0);
-	  /* Fake Ctrl-C for SIGINT, and Ctrl-Break for SIGQUIT.  */
-	  BYTE vk_break_code = (sig == SIGINT) ? 'C' : VK_CANCEL;
+	  BYTE vk_break_code = VK_CANCEL;
 	  BYTE break_scan_code = (BYTE) MapVirtualKey (vk_break_code, 0);
 	  HWND foreground_window;
 
 	  if (break_scan_code == 0)
 	    {
-	      /* Fake Ctrl-C for SIGQUIT if we can't manage Ctrl-Break. */
+	      /* Fake Ctrl-C if we can't manage Ctrl-Break. */
 	      vk_break_code = 'C';
 	      break_scan_code = (BYTE) MapVirtualKey (vk_break_code, 0);
 	    }
@@ -1865,7 +1855,7 @@ This is a numerical value; use `w32-get-locale-info' to convert to a\n\
 human-readable form.")
      ()
 {
-  return make_number (GetThreadLocale ());
+  return make_fixnum (GetThreadLocale ());
 }
 
 DWORD int_from_hex (char * s)
@@ -1892,7 +1882,7 @@ Lisp_Object Vw32_valid_locale_ids;
 BOOL CALLBACK enum_locale_fn (LPTSTR localeNum)
 {
   DWORD id = int_from_hex (localeNum);
-  Vw32_valid_locale_ids = Fcons (make_number (id), Vw32_valid_locale_ids);
+  Vw32_valid_locale_ids = Fcons (make_fixnum (id), Vw32_valid_locale_ids);
   return TRUE;
 }
 
@@ -1921,8 +1911,8 @@ human-readable form.")
      Lisp_Object userp;
 {
   if (NILP (userp))
-    return make_number (GetSystemDefaultLCID ());
-  return make_number (GetUserDefaultLCID ());
+    return make_fixnum (GetSystemDefaultLCID ());
+  return make_fixnum (GetUserDefaultLCID ());
 }
 
   
@@ -1945,7 +1935,7 @@ If successful, the new locale id is returned, otherwise nil.")
     /* Reply is not needed.  */
     PostThreadMessage (dwWindowsThreadId, WM_EMACS_SETLOCALE, XINT (lcid), 0);
 
-  return make_number (GetThreadLocale ());
+  return make_fixnum (GetThreadLocale ());
 }
 
 
@@ -1956,7 +1946,7 @@ Lisp_Object Vw32_valid_codepages;
 BOOL CALLBACK enum_codepage_fn (LPTSTR codepageNum)
 {
   DWORD id = atoi (codepageNum);
-  Vw32_valid_codepages = Fcons (make_number (id), Vw32_valid_codepages);
+  Vw32_valid_codepages = Fcons (make_fixnum (id), Vw32_valid_codepages);
   return TRUE;
 }
 
@@ -1977,7 +1967,7 @@ DEFUN ("w32-get-console-codepage", Fw32_get_console_codepage, Sw32_get_console_c
   "Return current Windows codepage for console input.")
      ()
 {
-  return make_number (GetConsoleCP ());
+  return make_fixnum (GetConsoleCP ());
 }
 
   
@@ -1996,7 +1986,7 @@ If successful, the new CP is returned, otherwise nil.")
   if (!SetConsoleCP (XINT (cp)))
     return Qnil;
 
-  return make_number (GetConsoleCP ());
+  return make_fixnum (GetConsoleCP ());
 }
 
 
@@ -2004,7 +1994,7 @@ DEFUN ("w32-get-console-output-codepage", Fw32_get_console_output_codepage, Sw32
   "Return current Windows codepage for console output.")
      ()
 {
-  return make_number (GetConsoleOutputCP ());
+  return make_fixnum (GetConsoleOutputCP ());
 }
 
   
@@ -2023,7 +2013,7 @@ If successful, the new CP is returned, otherwise nil.")
   if (!SetConsoleOutputCP (XINT (cp)))
     return Qnil;
 
-  return make_number (GetConsoleOutputCP ());
+  return make_fixnum (GetConsoleOutputCP ());
 }
 
 
@@ -2041,7 +2031,7 @@ Returns nil if the codepage is not valid.")
     return Qnil;
 
   if (TranslateCharsetInfo ((DWORD *) XINT (cp), &info, TCI_SRCCODEPAGE))
-    return make_number (info.ciCharset);
+    return make_fixnum (info.ciCharset);
 
   return Qnil;
 }
@@ -2062,8 +2052,8 @@ The return value is a list of pairs of language id and layout id.")
 	{
 	  DWORD kl = (DWORD) layouts[num_layouts];
 
-	  obj = Fcons (Fcons (make_number (kl & 0xffff),
-			      make_number ((kl >> 16) & 0xffff)),
+	  obj = Fcons (Fcons (make_fixnum (kl & 0xffff),
+			      make_fixnum ((kl >> 16) & 0xffff)),
 		       obj);
 	}
     }
@@ -2079,8 +2069,8 @@ The return value is the cons of the language id and the layout id.")
 {
   DWORD kl = (DWORD) GetKeyboardLayout (dwWindowsThreadId);
 
-  return Fcons (make_number (kl & 0xffff),
-		make_number ((kl >> 16) & 0xffff));
+  return Fcons (make_fixnum (kl & 0xffff),
+		make_fixnum ((kl >> 16) & 0xffff));
 }
 
   
@@ -2164,8 +2154,7 @@ will be chosen based on the type of the program.");
   DEFVAR_LISP ("w32-start-process-show-window",
 	       &Vw32_start_process_show_window,
     "When nil, new child processes hide their windows.\n\
-When non-nil, they show their window in the method of their choice.\n\
-This variable doesn't affect GUI applications, which will never be hidden.");
+When non-nil, they show their window in the method of their choice.");
   Vw32_start_process_show_window = Qnil;
 
   DEFVAR_LISP ("w32-start-process-share-console",

@@ -37,11 +37,9 @@ Boston, MA 02111-1307, USA.  */
 #include <signal.h>
 
 #include <stdio.h>
-#define DOC_STRINGS_IN_COMMENTS
 #include "lisp.h"
 #include "termhooks.h"
 #include "keyboard.h"
-#include "keymap.h"
 #include "frame.h"
 #include "window.h"
 #include "blockinput.h"
@@ -82,6 +80,9 @@ Boston, MA 02111-1307, USA.  */
 #include "../oldXMenu/XMenu.h"
 #endif /* not USE_X_TOOLKIT */
 #endif /* HAVE_X_WINDOWS */
+
+#define min(x,y) (((x) < (y)) ? (x) : (y))
+#define max(x,y) (((x) > (y)) ? (x) : (y))
 
 #ifndef TRUE
 #define TRUE 1
@@ -239,7 +240,7 @@ init_menu_items ()
   if (NILP (menu_items))
     {
       menu_items_allocated = 60;
-      menu_items = Fmake_vector (make_number (menu_items_allocated), Qnil);
+      menu_items = Fmake_vector (make_fixnum (menu_items_allocated), Qnil);
     }
 
   menu_items_used = 0;
@@ -280,7 +281,7 @@ grow_menu_items ()
   old = menu_items;
 
   menu_items_allocated *= 2;
-  menu_items = Fmake_vector (make_number (menu_items_allocated), Qnil);
+  menu_items = Fmake_vector (make_fixnum (menu_items_allocated), Qnil);
   bcopy (XVECTOR (old)->contents, XVECTOR (menu_items)->contents,
 	 old_size * sizeof (Lisp_Object));
 }
@@ -382,7 +383,7 @@ keymap_panes (keymaps, nmaps, notreal)
      P is the number of panes we have made so far.  */
   for (mapno = 0; mapno < nmaps; mapno++)
     single_keymap_panes (keymaps[mapno],
-			 Fkeymap_prompt (keymaps[mapno]), Qnil, notreal, 10);
+			 map_prompt (keymaps[mapno]), Qnil, notreal, 10);
 
   finish_menu_items ();
 }
@@ -656,40 +657,39 @@ list_of_items (pane)
 }
 
 DEFUN ("x-popup-menu", Fx_popup_menu, Sx_popup_menu, 2, 2, 0,
-  /* Pop up a deck-of-cards menu and return user's selection.
-POSITION is a position specification.  This is either a mouse button event
-or a list ((XOFFSET YOFFSET) WINDOW)
-where XOFFSET and YOFFSET are positions in pixels from the top left
-corner of WINDOW's frame.  (WINDOW may be a frame object instead of a window.)
-This controls the position of the center of the first line
-in the first pane of the menu, not the top left of the menu as a whole.
-If POSITION is t, it means to use the current mouse position.
-
-MENU is a specifier for a menu.  For the simplest case, MENU is a keymap.
-The menu items come from key bindings that have a menu string as well as
-a definition; actually, the "definition" in such a key binding looks like
-\(STRING . REAL-DEFINITION).  To give the menu a title, put a string into
-the keymap as a top-level element.
-
-If REAL-DEFINITION is nil, that puts a nonselectable string in the menu.
-Otherwise, REAL-DEFINITION should be a valid key binding definition.
-
-You can also use a list of keymaps as MENU.
-  Then each keymap makes a separate pane.
-When MENU is a keymap or a list of keymaps, the return value
-is a list of events.
-
-Alternatively, you can specify a menu of multiple panes
-  with a list of the form (TITLE PANE1 PANE2...),
-where each pane is a list of form (TITLE ITEM1 ITEM2...).
-Each ITEM is normally a cons cell (STRING . VALUE);
-but a string can appear as an item--that makes a nonselectable line
-in the menu.
-With this form of menu, the return value is VALUE from the chosen item.
-
-If POSITION is nil, don't display the menu at all, just precalculate the
-cached information about equivalent key sequences.  */
-       (position, menu))
+  "Pop up a deck-of-cards menu and return user's selection.\n\
+POSITION is a position specification.  This is either a mouse button event\n\
+or a list ((XOFFSET YOFFSET) WINDOW)\n\
+where XOFFSET and YOFFSET are positions in pixels from the top left\n\
+corner of WINDOW's frame.  (WINDOW may be a frame object instead of a window.)\n\
+This controls the position of the center of the first line\n\
+in the first pane of the menu, not the top left of the menu as a whole.\n\
+If POSITION is t, it means to use the current mouse position.\n\
+\n\
+MENU is a specifier for a menu.  For the simplest case, MENU is a keymap.\n\
+The menu items come from key bindings that have a menu string as well as\n\
+a definition; actually, the \"definition\" in such a key binding looks like\n\
+\(STRING . REAL-DEFINITION).  To give the menu a title, put a string into\n\
+the keymap as a top-level element.\n\n\
+If REAL-DEFINITION is nil, that puts a nonselectable string in the menu.\n\
+Otherwise, REAL-DEFINITION should be a valid key binding definition.\n\
+\n\
+You can also use a list of keymaps as MENU.\n\
+  Then each keymap makes a separate pane.\n\
+When MENU is a keymap or a list of keymaps, the return value\n\
+is a list of events.\n\n\
+\n\
+Alternatively, you can specify a menu of multiple panes\n\
+  with a list of the form (TITLE PANE1 PANE2...),\n\
+where each pane is a list of form (TITLE ITEM1 ITEM2...).\n\
+Each ITEM is normally a cons cell (STRING . VALUE);\n\
+but a string can appear as an item--that makes a nonselectable line\n\
+in the menu.\n\
+With this form of menu, the return value is VALUE from the chosen item.\n\
+\n\
+If POSITION is nil, don't display the menu at all, just precalculate the\n\
+cached information about equivalent key sequences.")
+  (position, menu)
      Lisp_Object position, menu;
 {
   Lisp_Object keymap, tem;
@@ -801,7 +801,7 @@ cached information about equivalent key sequences.  */
 
       /* Search for a string appearing directly as an element of the keymap.
 	 That string is the title of the menu.  */
-      prompt = Fkeymap_prompt (keymap);
+      prompt = map_prompt (keymap);
       if (NILP (title) && !NILP (prompt))
 	title = prompt;
 
@@ -829,7 +829,7 @@ cached information about equivalent key sequences.  */
 
 	  maps[i++] = keymap = get_keymap (Fcar (tem), 1, 0);
 
-	  prompt = Fkeymap_prompt (keymap);
+	  prompt = map_prompt (keymap);
 	  if (NILP (title) && !NILP (prompt))
 	    title = prompt;
 	}
@@ -881,22 +881,21 @@ cached information about equivalent key sequences.  */
 #ifdef HAVE_MENUS
 
 DEFUN ("x-popup-dialog", Fx_popup_dialog, Sx_popup_dialog, 2, 2, 0,
-  /* Pop up a dialog box and return user's selection.
-POSITION specifies which frame to use.
-This is normally a mouse button event or a window or frame.
-If POSITION is t, it means to use the frame the mouse is on.
-The dialog box appears in the middle of the specified frame.
-
-CONTENTS specifies the alternatives to display in the dialog box.
-It is a list of the form (TITLE ITEM1 ITEM2...).
-Each ITEM is a cons cell (STRING . VALUE).
-The return value is VALUE from the chosen item.
-
-An ITEM may also be just a string--that makes a nonselectable item.
-An ITEM may also be nil--that means to put all preceding items
-on the left of the dialog box and all following items on the right.
-\(By default, approximately half appear on each side.)  */
-       (position, contents))
+  "Pop up a dialog box and return user's selection.\n\
+POSITION specifies which frame to use.\n\
+This is normally a mouse button event or a window or frame.\n\
+If POSITION is t, it means to use the frame the mouse is on.\n\
+The dialog box appears in the middle of the specified frame.\n\
+\n\
+CONTENTS specifies the alternatives to display in the dialog box.\n\
+It is a list of the form (TITLE ITEM1 ITEM2...).\n\
+Each ITEM is a cons cell (STRING . VALUE).\n\
+The return value is VALUE from the chosen item.\n\n\
+An ITEM may also be just a string--that makes a nonselectable item.\n\
+An ITEM may also be nil--that means to put all preceding items\n\
+on the left of the dialog box and all following items on the right.\n\
+\(By default, approximately half appear on each side.)")
+  (position, contents)
      Lisp_Object position, contents;
 {
   struct frame * f = NULL;
@@ -1691,13 +1690,12 @@ set_frame_menubar (f, first_time, deep_p)
       inhibit_garbage_collection ();
 
       /* Save the frame's previous menu bar contents data.  */
-      if (previous_menu_items_used)
-	bcopy (XVECTOR (f->menu_bar_vector)->contents, previous_items,
-	       previous_menu_items_used * sizeof (Lisp_Object));
+      bcopy (XVECTOR (f->menu_bar_vector)->contents, previous_items,
+	     previous_menu_items_used * sizeof (Lisp_Object));
 
       /* Fill in the current menu bar contents.  */
       menu_items = f->menu_bar_vector;
-      menu_items_allocated = VECTORP (menu_items) ? ASIZE (menu_items) : 0;
+      menu_items_allocated = XVECTOR (menu_items)->size;
       init_menu_items ();
       for (i = 0; i < XVECTOR (items)->size; i += 4)
 	{
@@ -2545,9 +2543,9 @@ menu_help_callback (help_string, pane, item)
   /* (menu-item MENU-NAME PANE-NUMBER)  */
   menu_object = Fcons (Qmenu_item,
  		       Fcons (pane_name,
- 			      Fcons (make_number (pane), Qnil)));
+ 			      Fcons (make_fixnum (pane), Qnil)));
   show_help_echo (help_string ? build_string (help_string) : Qnil,
- 		  Qnil, menu_object, make_number (item), 1);
+ 		  Qnil, menu_object, make_fixnum (item), 1);
 }
   
 
@@ -2698,7 +2696,7 @@ xmenu_show (f, x, y, for_click, keymaps, title, error)
 	      int gap = maxwidth - STRING_BYTES (XSTRING (item_name));
 #ifdef C_ALLOCA
 	      Lisp_Object spacer;
-	      spacer = Fmake_string (make_number (gap), make_number (' '));
+	      spacer = Fmake_string (make_fixnum (gap), make_fixnum (' '));
 	      item_name = concat2 (item_name, spacer);
 	      item_name = concat2 (item_name, descrip);
 	      item_data = XSTRING (item_name)->data;
@@ -2849,9 +2847,9 @@ syms_of_xmenu ()
   Qdebug_on_next_call = intern ("debug-on-next-call");
   staticpro (&Qdebug_on_next_call);
 
-  DEFVAR_LISP ("menu-updating-frame", &Vmenu_updating_frame
-    /* Frame for which we are updating a menu.
-The enable predicate for a menu command should check this variable.  */);
+  DEFVAR_LISP ("menu-updating-frame", &Vmenu_updating_frame,
+    "Frame for which we are updating a menu.\n\
+The enable predicate for a menu command should check this variable.");
   Vmenu_updating_frame = Qnil;
 
 #ifdef USE_X_TOOLKIT

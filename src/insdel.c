@@ -33,6 +33,9 @@ Boston, MA 02111-1307, USA.  */
 #define NULL 0
 #endif
 
+#define min(x, y) ((x) < (y) ? (x) : (y))
+#define max(x, y) ((x) > (y) ? (x) : (y))
+
 static void insert_from_string_1 P_ ((Lisp_Object, int, int, int, int, int, int));
 static void insert_from_buffer_1 ();
 static void gap_left P_ ((int, int, int));
@@ -63,9 +66,6 @@ Lisp_Object combine_after_change_list;
 
 /* Buffer which combine_after_change_list is about.  */
 Lisp_Object combine_after_change_buffer;
-
-Lisp_Object Qinhibit_modification_hooks;
-
 
 /* Check all markers in the current buffer, looking for something invalid.  */
 
@@ -536,7 +536,7 @@ make_gap (nbytes_added)
      That won't work because so many places use `int'.  */
      
   if (Z_BYTE - BEG_BYTE + GAP_SIZE + nbytes_added
-      >= MOST_POSITIVE_FIXNUM)
+      >= ((unsigned) 1 << (min (BITS_PER_INT, VALBITS) - 1)))
     error ("Buffer exceeds maximum size");
 
   enlarge_buffer_text (current_buffer, nbytes_added);
@@ -600,7 +600,7 @@ copy_text (from_addr, to_addr, nbytes,
       if (CHAR_TABLE_P (Vnonascii_translation_table))
 	{
 	  tbl = Fchar_table_extra_slot (Vnonascii_translation_table,
-					make_number (0));
+					make_fixnum (0));
 	  if (!CHAR_TABLE_P (tbl))
 	    tbl = Qnil;
 	}
@@ -962,7 +962,7 @@ insert_1_both (string, nchars, nbytes, inherit, prepare, before_markers)
     offset_intervals (current_buffer, PT, nchars);
 
   if (!inherit && BUF_INTERVALS (current_buffer) != 0)
-    set_text_properties (make_number (PT), make_number (PT + nchars),
+    set_text_properties (make_fixnum (PT), make_fixnum (PT + nchars),
 			 Qnil, Qnil, Qnil);
 
   adjust_point (nchars, nbytes);
@@ -1792,7 +1792,7 @@ prepare_to_modify_buffer (start, end, preserve_ptr)
 	{
 	  Lisp_Object preserve_marker;
 	  struct gcpro gcpro1;
-	  preserve_marker = Fcopy_marker (make_number (*preserve_ptr), Qnil);
+	  preserve_marker = Fcopy_marker (make_fixnum (*preserve_ptr), Qnil);
 	  GCPRO1 (preserve_marker);
 	  verify_interval_modification (current_buffer, start, end);
 	  *preserve_ptr = marker_position (preserve_marker);
@@ -1838,7 +1838,7 @@ prepare_to_modify_buffer (start, end, preserve_ptr)
 
 #define PRESERVE_VALUE							\
   if (preserve_ptr && NILP (preserve_marker))				\
-    preserve_marker = Fcopy_marker (make_number (*preserve_ptr), Qnil)
+    preserve_marker = Fcopy_marker (make_fixnum (*preserve_ptr), Qnil)
 
 #define RESTORE_VALUE						\
   if (! NILP (preserve_marker))					\
@@ -1878,8 +1878,8 @@ signal_before_change (start_int, end_int, preserve_ptr)
   if (inhibit_modification_hooks)
     return;
 
-  start = make_number (start_int);
-  end = make_number (end_int);
+  start = make_fixnum (start_int);
+  end = make_fixnum (end_int);
   preserve_marker = Qnil;
   start_marker = Qnil;
   end_marker = Qnil;
@@ -1985,9 +1985,9 @@ signal_after_change (charpos, lendel, lenins)
 	  && current_buffer != XBUFFER (combine_after_change_buffer))
 	Fcombine_after_change_execute ();
 
-      elt = Fcons (make_number (charpos - BEG),
-		   Fcons (make_number (Z - (charpos - lendel + lenins)),
-			  Fcons (make_number (lenins - lendel), Qnil)));
+      elt = Fcons (make_fixnum (charpos - BEG),
+		   Fcons (make_fixnum (Z - (charpos - lendel + lenins)),
+			  Fcons (make_fixnum (lenins - lendel), Qnil)));
       combine_after_change_list
 	= Fcons (elt, combine_after_change_list);
       combine_after_change_buffer = Fcurrent_buffer ();
@@ -2044,18 +2044,18 @@ signal_after_change (charpos, lendel, lenins)
 
   if (!NILP (current_buffer->overlays_before)
       || !NILP (current_buffer->overlays_after))
-    report_overlay_modification (make_number (charpos),
-				 make_number (charpos + lenins),
+    report_overlay_modification (make_fixnum (charpos),
+				 make_fixnum (charpos + lenins),
 				 1,
-				 make_number (charpos),
-				 make_number (charpos + lenins),
-				 make_number (lendel));
+				 make_fixnum (charpos),
+				 make_fixnum (charpos + lenins),
+				 make_fixnum (lendel));
 
   /* After an insertion, call the text properties
      insert-behind-hooks or insert-in-front-hooks.  */
   if (lendel == 0)
-    report_interval_modification (make_number (charpos),
-				  make_number (charpos + lenins));
+    report_interval_modification (make_fixnum (charpos),
+				  make_fixnum (charpos + lenins));
 }
 
 Lisp_Object
@@ -2159,8 +2159,6 @@ syms_of_insdel ()
 This affects `before-change-functions' and `after-change-functions',\n\
 as well as hooks attached to text properties and overlays.");
   inhibit_modification_hooks = 0;
-  Qinhibit_modification_hooks = intern ("inhibit-modification-hooks");
-  staticpro (&Qinhibit_modification_hooks);
 
   defsubr (&Scombine_after_change_execute);
 }

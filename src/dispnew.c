@@ -19,8 +19,6 @@ along with GNU Emacs; see the file COPYING.  If not, write to
 the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
 Boston, MA 02111-1307, USA.  */
 
-#define DOC_STRINGS_IN_COMMENTS
-
 #include <config.h>
 #include <signal.h>
 #include <stdio.h>
@@ -77,6 +75,9 @@ Boston, MA 02111-1307, USA.  */
 #include <unistd.h>
 #endif
 
+#define max(a, b) ((a) > (b) ? (a) : (b))
+#define min(a, b) ((a) < (b) ? (a) : (b))
+
 /* Get number of chars of output now in the buffer of a stdio stream.
    This ought to be built in in stdio, but it isn't.  Some s- files
    override this because their stdio internals differ.  */
@@ -130,8 +131,9 @@ static int count_match P_ ((struct glyph *, struct glyph *,
 static unsigned line_draw_cost P_ ((struct glyph_matrix *, int));
 static void update_frame_line P_ ((struct frame *, int));
 static struct dim allocate_matrices_for_frame_redisplay
-     P_ ((Lisp_Object, int, int, int, int *));
-static void allocate_matrices_for_window_redisplay P_ ((struct window *));
+     P_ ((Lisp_Object, int, int, struct dim, int, int *));
+static void allocate_matrices_for_window_redisplay P_ ((struct window *,
+							struct dim));
 static int realloc_glyph_pool P_ ((struct glyph_pool *, struct dim));
 static void adjust_frame_glyphs P_ ((struct frame *));
 struct glyph_matrix *new_glyph_matrix P_ ((struct glyph_pool *));
@@ -412,8 +414,8 @@ add_frame_display_history (f, paused_p)
 
 DEFUN ("dump-redisplay-history", Fdump_redisplay_history,
        Sdump_redisplay_history, 0, 0, "",
-       /* Dump redisplay history to stderr.  */
-       ())
+   "Dump redisplay history to stderr.")
+     ()
 {
   int i;
 
@@ -795,17 +797,15 @@ adjust_glyph_matrix (w, matrix, x, y, dim)
 	      && matrix->window_top_y == XFASTINT (w->top)
 	      && matrix->window_width == window_width)
 	    {
-	      /* Find the last row in the window.  */
-	      for (i = 0; i < matrix->nrows && matrix->rows[i].enabled_p; ++i)
-		if (MATRIX_ROW_BOTTOM_Y (matrix->rows + i) >= window_height)
-		  {
-		    ++i;
-		    break;
-		  }
+	      i = 0;
+	      while (matrix->rows[i].enabled_p
+		     && (MATRIX_ROW_BOTTOM_Y (matrix->rows + i)
+			 < matrix->window_height))
+		++i;
 
 	      /* Window end is invalid, if inside of the rows that
-		 are invalidated below.  */
-	      if (INTEGERP (w->window_end_vpos)
+		 are invalidated.  */
+	      if (FIXNUMP (w->window_end_vpos)
 		  && XFASTINT (w->window_end_vpos) >= i)
 		w->window_end_valid = Qnil;
 	  
@@ -992,12 +992,13 @@ shift_glyph_matrix (w, matrix, start, end, dy)
       struct glyph_row *row = &matrix->rows[start];
       
       row->y += dy;
-      row->visible_height = row->height;
       
       if (row->y < min_y)
-	row->visible_height -= min_y - row->y;
-      if (row->y + row->height > max_y)
-	row->visible_height -= row->y + row->height - max_y;
+	row->visible_height = row->height - (min_y - row->y);
+      else if (row->y + row->height > max_y)
+	row->visible_height = row->height - (row->y + row->height - max_y);
+      else
+	row->visible_height = row->height;
     }
 }
 
@@ -1151,12 +1152,13 @@ blank_row (w, row, y)
   row->y = y;
   row->ascent = row->phys_ascent = 0;
   row->height = row->phys_height = CANON_Y_UNIT (XFRAME (w->frame));
-  row->visible_height = row->height;
-      
+  
   if (row->y < min_y)
-    row->visible_height -= min_y - row->y;
-  if (row->y + row->height > max_y)
-    row->visible_height -= row->y + row->height - max_y;
+    row->visible_height = row->height - (min_y - row->y);
+  else if (row->y + row->height > max_y)
+    row->visible_height = row->height - (row->y + row->height - max_y);
+  else
+    row->visible_height = row->height;
 
   row->enabled_p = 1;
 }
@@ -1855,10 +1857,11 @@ check_matrix_invariants (w)
 #define CHANGED_LEAF_MATRIX	(1 << 1)
 
 static struct dim
-allocate_matrices_for_frame_redisplay (window, x, y, dim_only_p,
-				       window_change_flags)
+allocate_matrices_for_frame_redisplay (window, x, y, ch_dim,
+				       dim_only_p, window_change_flags)
      Lisp_Object window;
      int x, y;
+     struct dim ch_dim;
      int dim_only_p;
      int *window_change_flags;
 {
@@ -1888,11 +1891,11 @@ allocate_matrices_for_frame_redisplay (window, x, y, dim_only_p,
       /* Get the dimension of the window sub-matrix for W, depending
 	 on whether this a combination or a leaf window.  */
       if (!NILP (w->hchild))
-	dim = allocate_matrices_for_frame_redisplay (w->hchild, x, y, 
+	dim = allocate_matrices_for_frame_redisplay (w->hchild, x, y, ch_dim,
 						     dim_only_p,
 						     window_change_flags);
       else if (!NILP (w->vchild))
-	dim = allocate_matrices_for_frame_redisplay (w->vchild, x, y, 
+	dim = allocate_matrices_for_frame_redisplay (w->vchild, x, y, ch_dim,
 						     dim_only_p,
 						     window_change_flags);
       else
@@ -1907,8 +1910,8 @@ allocate_matrices_for_frame_redisplay (window, x, y, dim_only_p,
   
 	  /* Width and height MUST be chosen so that there are no
 	     holes in the frame matrix.  */
-	  dim.width = required_matrix_width (w);
-	  dim.height = required_matrix_height (w);
+	  dim.width = XINT (w->width);
+	  dim.height = XINT (w->height);
 
 	  /* Will matrix be re-allocated?  */
 	  if (x != w->desired_matrix->matrix_x
@@ -1973,78 +1976,28 @@ allocate_matrices_for_frame_redisplay (window, x, y, dim_only_p,
 }
 
 
-/* Return the required height of glyph matrices for window W.  */
-
-int
-required_matrix_height (w)
-     struct window *w;
-{
-#ifdef HAVE_WINDOW_SYSTEM
-  struct frame *f = XFRAME (w->frame);
-  
-  if (FRAME_WINDOW_P (f))
-    {
-      int ch_height = FRAME_SMALLEST_FONT_HEIGHT (f);
-      int window_pixel_height = window_box_height (w) + abs (w->vscroll);
-      return (((window_pixel_height + ch_height - 1)
-	       / ch_height)
-	      /* One partially visible line at the top and
-		 bottom of the window.  */
-	      + 2
-	      /* 2 for top and mode line.  */
-	      + 2);
-    }
-#endif /* HAVE_WINDOW_SYSTEM */
-      
-  return XINT (w->height);
-}
-
-
-/* Return the required width of glyph matrices for window W.  */
-
-int
-required_matrix_width (w)
-     struct window *w;
-{
-#ifdef HAVE_WINDOW_SYSTEM
-  struct frame *f = XFRAME (w->frame);
-  if (FRAME_WINDOW_P (f))
-    {
-      int ch_width = FRAME_SMALLEST_CHAR_WIDTH (f);
-      int window_pixel_width = XFLOATINT (w->width) * CANON_X_UNIT (f);
-  
-      /* Compute number of glyphs needed in a glyph row.  */
-      return (((window_pixel_width + ch_width - 1)
-	       / ch_width)
-	      /* 2 partially visible columns in the text area.  */
-	      + 2
-	      /* One partially visible column at the right
-		 edge of each marginal area.  */
-	      + 1 + 1);
-    }
-#endif /* HAVE_WINDOW_SYSTEM */
-
-  return XINT (w->width);
-}
-
-
 /* Allocate window matrices for window-based redisplay.  W is the
    window whose matrices must be allocated/reallocated.  CH_DIM is the
    size of the smallest character that could potentially be used on W.  */
    
 static void
-allocate_matrices_for_window_redisplay (w)
+allocate_matrices_for_window_redisplay (w, ch_dim)
      struct window *w;
+     struct dim ch_dim;
 {
+  struct frame *f = XFRAME (w->frame);
+  
   while (w)
     {
       if (!NILP (w->vchild))
-	allocate_matrices_for_window_redisplay (XWINDOW (w->vchild));
+	allocate_matrices_for_window_redisplay (XWINDOW (w->vchild), ch_dim);
       else if (!NILP (w->hchild))
-	allocate_matrices_for_window_redisplay (XWINDOW (w->hchild));
+	allocate_matrices_for_window_redisplay (XWINDOW (w->hchild), ch_dim);
       else
 	{
 	  /* W is a leaf window.  */
+	  int window_pixel_width = XFLOATINT (w->width) * CANON_X_UNIT (f);
+	  int window_pixel_height = window_box_height (w) + abs (w->vscroll);
 	  struct dim dim;
 
 	  /* If matrices are not yet allocated, allocate them now.  */
@@ -2054,8 +2007,25 @@ allocate_matrices_for_window_redisplay (w)
 	      w->current_matrix = new_glyph_matrix (NULL);
 	    }
 
-	  dim.width = required_matrix_width (w);
-	  dim.height = required_matrix_height (w);
+	  /* Compute number of glyphs needed in a glyph row.  */
+	  dim.width = (((window_pixel_width + ch_dim.width - 1)
+			/ ch_dim.width)
+		       /* 2 partially visible columns in the text area.  */
+		       + 2
+		       /* One partially visible column at the right
+			  edge of each marginal area.  */
+		       + 1 + 1);
+
+	  /* Compute number of glyph rows needed.  */
+	  dim.height = (((window_pixel_height + ch_dim.height - 1)
+			 / ch_dim.height)
+			/* One partially visible line at the top and
+			   bottom of the window.  */
+			+ 2
+			/* 2 for top and mode line.  */
+			+ 2);
+
+	  /* Change matrices.  */
 	  adjust_glyph_matrix (w, w->desired_matrix, 0, 0, dim);
 	  adjust_glyph_matrix (w, w->current_matrix, 0, 0, dim);
 	}
@@ -2303,7 +2273,7 @@ adjust_frame_glyphs_for_frame_redisplay (f)
   matrix_dim
     = allocate_matrices_for_frame_redisplay (FRAME_ROOT_WINDOW (f),
 					     0, top_window_y,
-					     1,
+					     ch_dim, 1,
 					     &window_change_flags);
 
   /* Add in menu bar lines, if any.  */
@@ -2319,7 +2289,7 @@ adjust_frame_glyphs_for_frame_redisplay (f)
     {
       /* Do it for window matrices.  */
       allocate_matrices_for_frame_redisplay (FRAME_ROOT_WINDOW (f),
-					     0, top_window_y, 0,
+					     0, top_window_y, ch_dim, 0,
 					     &window_change_flags);
 
       /* Size of frame matrices must equal size of frame.  Note
@@ -2379,7 +2349,8 @@ adjust_frame_glyphs_for_window_redisplay (f)
 #endif
     
   /* Allocate/reallocate window matrices.  */
-  allocate_matrices_for_window_redisplay (XWINDOW (FRAME_ROOT_WINDOW (f)));
+  allocate_matrices_for_window_redisplay (XWINDOW (FRAME_ROOT_WINDOW (f)),
+					  ch_dim);
 
   /* Allocate/ reallocate matrices of the dummy window used to display
      the menu bar under X when no X toolkit support is available.  */
@@ -2402,7 +2373,7 @@ adjust_frame_glyphs_for_window_redisplay (f)
     XSETFASTINT (w->left, 0);
     XSETFASTINT (w->height, FRAME_MENU_BAR_LINES (f));
     XSETFASTINT (w->width, FRAME_WINDOW_WIDTH (f));
-    allocate_matrices_for_window_redisplay (w);
+    allocate_matrices_for_window_redisplay (w, ch_dim);
   }
 #endif /* not USE_X_TOOLKIT */
 
@@ -2422,7 +2393,7 @@ adjust_frame_glyphs_for_window_redisplay (f)
   XSETFASTINT (w->left, 0);
   XSETFASTINT (w->height, FRAME_TOOL_BAR_LINES (f));
   XSETFASTINT (w->width, FRAME_WINDOW_WIDTH (f));
-  allocate_matrices_for_window_redisplay (w);
+  allocate_matrices_for_window_redisplay (w, ch_dim);
 }
 
 
@@ -2723,7 +2694,7 @@ build_frame_matrix_from_leaf_window (frame_matrix, w)
       if (!WINDOW_RIGHTMOST_P (w))
 	{
 	  struct Lisp_Char_Table *dp = window_display_table (w);
-	  right_border_glyph = (dp && INTEGERP (DISP_BORDER_GLYPH (dp))
+	  right_border_glyph = (dp && FIXNUMP (DISP_BORDER_GLYPH (dp))
 				? XINT (DISP_BORDER_GLYPH (dp))
 				: '|');
 	}
@@ -3307,8 +3278,8 @@ window_to_frame_hpos (w, hpos)
  **********************************************************************/
 
 DEFUN ("redraw-frame", Fredraw_frame, Sredraw_frame, 1, 1, 0,
-       /* Clear frame FRAME and output again what is supposed to appear on it.  */
-       (frame))
+  "Clear frame FRAME and output again what is supposed to appear on it.")
+  (frame)
      Lisp_Object frame;
 {
   struct frame *f;
@@ -3353,8 +3324,8 @@ redraw_frame (f)
 
 
 DEFUN ("redraw-display", Fredraw_display, Sredraw_display, 0, 0, "",
-       /* Clear and redisplay all visible frames.  */
-       ())
+  "Clear and redisplay all visible frames.")
+  ()
 {
   Lisp_Object tail, frame;
 
@@ -3511,7 +3482,6 @@ direct_output_for_insert (g)
   it.current_y = w->cursor.y;
   it.end_charpos = PT;
   it.stop_charpos = min (PT, it.stop_charpos);
-  it.stop_charpos = max (IT_CHARPOS (it), it.stop_charpos);
 
   /* More than one display element may be returned for PT - 1 if
      (i) it's a control character which is translated into `\003' or
@@ -3605,7 +3575,7 @@ direct_output_for_insert (g)
     |= it.glyph_row->contains_overlapping_glyphs_p;
 
   glyph_row->displays_text_p = 1;
-  w->window_end_vpos = make_number (max (w->cursor.vpos,
+  w->window_end_vpos = make_fixnum (max (w->cursor.vpos,
 					 XFASTINT (w->window_end_vpos)));
 
   if (!NILP (Vshow_trailing_whitespace))
@@ -3616,7 +3586,6 @@ direct_output_for_insert (g)
      implemented for X frames.  The implementation uses updated_window
      and updated_row.  */
   updated_row = glyph_row;
-  updated_area = TEXT_AREA;
   update_begin (f);
   if (rif)
     {
@@ -3654,7 +3623,7 @@ direct_output_for_insert (g)
     {
       int x, y;
       x = (WINDOW_TO_FRAME_HPOS (w, w->cursor.hpos)
-	   + (INTEGERP (w->left_margin_width)
+	   + (FIXNUMP (w->left_margin_width)
 	      ? XFASTINT (w->left_margin_width)
 	      : 0));
       y = WINDOW_TO_FRAME_VPOS (w, w->cursor.vpos);
@@ -3756,7 +3725,7 @@ direct_output_forward_char (n)
     {
       int x, y;
       x = (WINDOW_TO_FRAME_HPOS (w, w->cursor.hpos)
-	   + (INTEGERP (w->left_margin_width)
+	   + (FIXNUMP (w->left_margin_width)
 	      ? XFASTINT (w->left_margin_width)
 	      : 0));
       y = WINDOW_TO_FRAME_VPOS (w, w->cursor.vpos);
@@ -4084,7 +4053,7 @@ update_window (w, force_p)
     {
       struct glyph_row *row, *end;
       struct glyph_row *mode_line_row;
-      struct glyph_row *header_line_row;
+      struct glyph_row *header_line_row = NULL;
       int yb, changed_p = 0, mouse_face_overwritten_p = 0, n_updated;
 
       rif->update_window_begin_hook (w);
@@ -4094,14 +4063,8 @@ update_window (w, force_p)
 	 Adjust y-positions of other rows by the top line height.  */
       row = desired_matrix->rows;
       end = row + desired_matrix->nrows - 1;
-      
       if (row->mode_line_p)
-	{
-	  header_line_row = row;
-	  ++row;
-	}
-      else
-	header_line_row = NULL;
+	header_line_row = row++;
 
       /* Update the mode line, if necessary.  */
       mode_line_row = MATRIX_MODE_LINE_ROW (desired_matrix);
@@ -4131,7 +4094,6 @@ update_window (w, force_p)
 	      goto set_cursor;
 	    }
 	  else if (rc > 0)
-	    /* We've scrolled the display.  */
 	    force_p = 1;
 	  changed_p = 1;
 	}
@@ -4205,11 +4167,8 @@ update_window (w, force_p)
       strcpy (w->current_matrix->method, w->desired_matrix->method);
 #endif
 
-      /* End the update of window W.  Don't set the cursor if we
-         paused updating the display because in this case,
-         set_window_cursor_after_update hasn't been called, and
-         output_cursor doesn't contain the cursor location.  */
-      rif->update_window_end_hook (w, !paused_p, mouse_face_overwritten_p);
+      /* End of update of window W.  */
+      rif->update_window_end_hook (w, 1, mouse_face_overwritten_p);
     }
   else
     paused_p = 1;
@@ -4569,21 +4528,22 @@ set_window_cursor_after_update (w)
 	  int yb = window_text_bottom_y (w);
 
 	  last_row = NULL;
-	  row = w->current_matrix->rows;
-	  while (row->enabled_p
-		 && (last_row == NULL
-		     || MATRIX_ROW_BOTTOM_Y (row) <= yb))
+	  for (row = MATRIX_ROW (w->current_matrix, 0);
+	       row->enabled_p;
+	       ++row)
 	    {
 	      if (row->used[TEXT_AREA]
 		  && row->glyphs[TEXT_AREA][0].charpos >= 0)
 		last_row = row;
-	      ++row;
+
+	      if (MATRIX_ROW_BOTTOM_Y (row) >= yb)
+		break;
 	    }
 	  
 	  if (last_row)
 	    {
-	      struct glyph *start = last_row->glyphs[TEXT_AREA];
-	      struct glyph *last = start + last_row->used[TEXT_AREA] - 1;
+	      struct glyph *start = row->glyphs[TEXT_AREA];
+	      struct glyph *last = start + row->used[TEXT_AREA] - 1;
 
 	      while (last > start && last->charpos < 0)
 		--last;
@@ -5227,7 +5187,7 @@ update_frame_1 (f, force_p, inhibit_id_p)
 	      int x = WINDOW_TO_FRAME_HPOS (w, w->cursor.hpos);
 	      int y = WINDOW_TO_FRAME_VPOS (w, w->cursor.vpos);
 
-	      if (INTEGERP (w->left_margin_width))
+	      if (FIXNUMP (w->left_margin_width))
 		x += XFASTINT (w->left_margin_width);
 	      
 	      /* x = max (min (x, FRAME_WINDOW_WIDTH (f) - 1), 0); */
@@ -6042,10 +6002,10 @@ change_frame_size_1 (f, newheight, newwidth, pretend, delay, safe)
  ***********************************************************************/
 
 DEFUN ("open-termscript", Fopen_termscript, Sopen_termscript,
-       1, 1, "FOpen termscript file: ",
-       /* Start writing all terminal output to FILE as well as the terminal.
-FILE = nil means just close any termscript file currently open.  */
-       (file))
+  1, 1, "FOpen termscript file: ",
+  "Start writing all terminal output to FILE as well as the terminal.\n\
+FILE = nil means just close any termscript file currently open.")
+  (file)
      Lisp_Object file;
 {
   if (termscript != 0) fclose (termscript);
@@ -6063,10 +6023,10 @@ FILE = nil means just close any termscript file currently open.  */
 
 
 DEFUN ("send-string-to-terminal", Fsend_string_to_terminal,
-       Ssend_string_to_terminal, 1, 1, 0,
-       /* Send STRING to the terminal without alteration.
-Control characters in STRING will have terminal-dependent effects.  */
-       (string))
+  Ssend_string_to_terminal, 1, 1, 0,
+  "Send STRING to the terminal without alteration.\n\
+Control characters in STRING will have terminal-dependent effects.")
+  (string)
      Lisp_Object string;
 {
   /* ??? Perhaps we should do something special for multibyte strings here.  */
@@ -6084,10 +6044,10 @@ Control characters in STRING will have terminal-dependent effects.  */
 
 
 DEFUN ("ding", Fding, Sding, 0, 1, 0,
-       /* Beep, or flash the screen.
-Also, unless an argument is given,
-terminate any keyboard macro currently executing.  */
-       (arg))
+  "Beep, or flash the screen.\n\
+Also, unless an argument is given,\n\
+terminate any keyboard macro currently executing.")
+  (arg)
   Lisp_Object arg;
 {
   if (!NILP (arg))
@@ -6123,13 +6083,13 @@ bitch_at_user ()
  ***********************************************************************/
 
 DEFUN ("sleep-for", Fsleep_for, Ssleep_for, 1, 2, 0,
-       /* Pause, without updating display, for SECONDS seconds.
-SECONDS may be a floating-point value, meaning that you can wait for a
-fraction of a second.  Optional second arg MILLISECONDS specifies an
-additional wait period, in milliseconds; this may be useful if your
-Emacs was built without floating point support.
-\(Not all operating systems support waiting for a fraction of a second.)  */
-       (seconds, milliseconds))
+  "Pause, without updating display, for SECONDS seconds.\n\
+SECONDS may be a floating-point value, meaning that you can wait for a\n\
+fraction of a second.  Optional second arg MILLISECONDS specifies an\n\
+additional wait period, in milliseconds; this may be useful if your\n\
+Emacs was built without floating point support.\n\
+\(Not all operating systems support waiting for a fraction of a second.)")
+  (seconds, milliseconds)
      Lisp_Object seconds, milliseconds;
 {
   int sec, usec;
@@ -6246,17 +6206,17 @@ sit_for (sec, usec, reading, display, initial_display)
 
 
 DEFUN ("sit-for", Fsit_for, Ssit_for, 1, 3, 0,
-  /* Perform redisplay, then wait for SECONDS seconds or until input is available.
-SECONDS may be a floating-point value, meaning that you can wait for a
-fraction of a second.  Optional second arg MILLISECONDS specifies an
-additional wait period, in milliseconds; this may be useful if your
-Emacs was built without floating point support.
-\(Not all operating systems support waiting for a fraction of a second.)
-Optional third arg NODISP non-nil means don't redisplay, just wait for input.
-Redisplay is preempted as always if input arrives, and does not happen
-if input is available before it starts.
-Value is t if waited the full time with no input arriving.  */
-       (seconds, milliseconds, nodisp))
+  "Perform redisplay, then wait for SECONDS seconds or until input is available.\n\
+SECONDS may be a floating-point value, meaning that you can wait for a\n\
+fraction of a second.  Optional second arg MILLISECONDS specifies an\n\
+additional wait period, in milliseconds; this may be useful if your\n\
+Emacs was built without floating point support.\n\
+\(Not all operating systems support waiting for a fraction of a second.)\n\
+Optional third arg NODISP non-nil means don't redisplay, just wait for input.\n\
+Redisplay is preempted as always if input arrives, and does not happen\n\
+if input is available before it starts.\n\
+Value is t if waited the full time with no input arriving.")
+  (seconds, milliseconds, nodisp)
      Lisp_Object seconds, milliseconds, nodisp;
 {
   int sec, usec;
@@ -6296,15 +6256,15 @@ static Lisp_Object frame_and_buffer_state;
 
 
 DEFUN ("frame-or-buffer-changed-p", Fframe_or_buffer_changed_p,
-       Sframe_or_buffer_changed_p, 0, 0, 0,
-  /* Return non-nil if the frame and buffer state appears to have changed.
-The state variable is an internal vector containing all frames and buffers,
-aside from buffers whose names start with space,
-along with the buffers' read-only and modified flags, which allows a fast
-check to see whether the menu bars might need to be recomputed.
-If this function returns non-nil, it updates the internal vector to reflect
-the current state.  */
-       ())
+  Sframe_or_buffer_changed_p, 0, 0, 0,
+  "Return non-nil if the frame and buffer state appears to have changed.\n\
+The state variable is an internal vector containing all frames and buffers,\n\
+aside from buffers whose names start with space,\n\
+along with the buffers' read-only and modified flags, which allows a fast\n\
+check to see whether the menu bars might need to be recomputed.\n\
+If this function returns non-nil, it updates the internal vector to reflect\n\
+the current state.\n")
+  ()
 {
   Lisp_Object tail, frame, buf;
   Lisp_Object *vecp;
@@ -6349,7 +6309,7 @@ the current state.  */
   if (n > XVECTOR (frame_and_buffer_state)->size
       || n + 20 < XVECTOR (frame_and_buffer_state)->size / 2)
     /* Add 20 extra so we grow it less often.  */
-    frame_and_buffer_state = Fmake_vector (make_number (n + 20), Qlambda);
+    frame_and_buffer_state = Fmake_vector (make_fixnum (n + 20), Qlambda);
   vecp = XVECTOR (frame_and_buffer_state)->contents;
   FOR_EACH_FRAME (tail, frame)
     {
@@ -6440,9 +6400,9 @@ init_display ()
     {
       Vwindow_system = intern ("x");
 #ifdef HAVE_X11
-      Vwindow_system_version = make_number (11);
+      Vwindow_system_version = make_fixnum (11);
 #else
-      Vwindow_system_version = make_number (10);
+      Vwindow_system_version = make_fixnum (10);
 #endif
 #if defined (LINUX) && defined (HAVE_LIBNCURSES)
       /* In some versions of ncurses,
@@ -6459,7 +6419,7 @@ init_display ()
   if (!inhibit_window_system) 
     {
       Vwindow_system = intern ("w32");
-      Vwindow_system_version = make_number (1);
+      Vwindow_system_version = make_fixnum (1);
       adjust_frame_glyphs_initially ();
       return;
     }
@@ -6469,7 +6429,7 @@ init_display ()
   if (!inhibit_window_system) 
     {
       Vwindow_system = intern ("mac");
-      Vwindow_system_version = make_number (1);
+      Vwindow_system_version = make_fixnum (1);
       adjust_frame_glyphs_initially ();
       return;
     }
@@ -6569,11 +6529,11 @@ For types not defined in VMS, use  define emacs_term \"TYPE\".\n\
 
 DEFUN ("internal-show-cursor", Finternal_show_cursor,
        Sinternal_show_cursor, 2, 2, 0,
-       /* Set the cursor-visibility flag of WINDOW to SHOW.
-WINDOW nil means use the selected window.  SHOW non-nil means
-show a cursor in WINDOW in the next redisplay.  SHOW nil means
-don't show a cursor.  */
-       (window, show))
+  "Set the cursor-visibility flag of WINDOW to SHOW.\n\
+WINDOW nil means use the selected window.  SHOW non-nil means\n\
+show a cursor in WINDOW in the next redisplay.  SHOW nil means\n\
+don't show a cursor.")
+  (window, show)
      Lisp_Object window, show;
 {
   /* Don't change cursor state while redisplaying.  This could confuse
@@ -6594,9 +6554,9 @@ don't show a cursor.  */
 
 DEFUN ("internal-show-cursor-p", Finternal_show_cursor_p,
        Sinternal_show_cursor_p, 0, 1, 0,
-   /* Value is non-nil if next redisplay will display a cursor in WINDOW.
-WINDOW nil or omitted means report on the selected window.  */
-       (window))
+  "Value is non-nil if next redisplay will display a cursor in WINDOW.\n\
+WINDOW nil or omitted means report on the selected window.")
+  (window)
      Lisp_Object window;
 {
   struct window *w;
@@ -6633,7 +6593,7 @@ syms_of_display ()
   defsubr (&Sdump_redisplay_history);
 #endif
 
-  frame_and_buffer_state = Fmake_vector (make_number (20), Qlambda);
+  frame_and_buffer_state = Fmake_vector (make_fixnum (20), Qlambda);
   staticpro (&frame_and_buffer_state);
 
   Qdisplay_table = intern ("display-table");
@@ -6641,53 +6601,53 @@ syms_of_display ()
   Qredisplay_dont_pause = intern ("redisplay-dont-pause");
   staticpro (&Qredisplay_dont_pause);
 
-  DEFVAR_INT ("baud-rate", &baud_rate
-    /* *The output baud rate of the terminal.
-On most systems, changing this value will affect the amount of padding
-and the other strategic decisions made during redisplay.  */);
+  DEFVAR_INT ("baud-rate", &baud_rate,
+    "*The output baud rate of the terminal.\n\
+On most systems, changing this value will affect the amount of padding\n\
+and the other strategic decisions made during redisplay.");
   
-  DEFVAR_BOOL ("inverse-video", &inverse_video
-    /* *Non-nil means invert the entire frame display.
-This means everything is in inverse video which otherwise would not be.  */);
+  DEFVAR_BOOL ("inverse-video", &inverse_video,
+    "*Non-nil means invert the entire frame display.\n\
+This means everything is in inverse video which otherwise would not be.");
   
-  DEFVAR_BOOL ("visible-bell", &visible_bell
-    /* *Non-nil means try to flash the frame to represent a bell.  */);
+  DEFVAR_BOOL ("visible-bell", &visible_bell,
+    "*Non-nil means try to flash the frame to represent a bell.");
   
-  DEFVAR_BOOL ("no-redraw-on-reenter", &no_redraw_on_reenter
-    /* *Non-nil means no need to redraw entire frame after suspending.
-A non-nil value is useful if the terminal can automatically preserve
-Emacs's frame display when you reenter Emacs.
-It is up to you to set this variable if your terminal can do that.  */);
+  DEFVAR_BOOL ("no-redraw-on-reenter", &no_redraw_on_reenter,
+    "*Non-nil means no need to redraw entire frame after suspending.\n\
+A non-nil value is useful if the terminal can automatically preserve\n\
+Emacs's frame display when you reenter Emacs.\n\
+It is up to you to set this variable if your terminal can do that.");
   
-  DEFVAR_LISP ("window-system", &Vwindow_system
-    /* A symbol naming the window-system under which Emacs is running
-\(such as `x'), or nil if emacs is running on an ordinary terminal.  */);
+  DEFVAR_LISP ("window-system", &Vwindow_system,
+    "A symbol naming the window-system under which Emacs is running\n\
+\(such as `x'), or nil if emacs is running on an ordinary terminal.");
   
-  DEFVAR_LISP ("window-system-version", &Vwindow_system_version
-    /* The version number of the window system in use.
-For X windows, this is 10 or 11.  */);
+  DEFVAR_LISP ("window-system-version", &Vwindow_system_version,
+    "The version number of the window system in use.\n\
+For X windows, this is 10 or 11.");
   
-  DEFVAR_BOOL ("cursor-in-echo-area", &cursor_in_echo_area
-    /* Non-nil means put cursor in minibuffer, at end of any message there.  */);
+  DEFVAR_BOOL ("cursor-in-echo-area", &cursor_in_echo_area,
+    "Non-nil means put cursor in minibuffer, at end of any message there.");
   
-  DEFVAR_LISP ("glyph-table", &Vglyph_table
-    /* Table defining how to output a glyph code to the frame.
-If not nil, this is a vector indexed by glyph code to define the glyph.
-Each element can be:
- integer: a glyph code which this glyph is an alias for.
- string: output this glyph using that string (not impl. in X windows).
- nil: this glyph mod 524288 is the code of a character to output,
-    and this glyph / 524288 is the face number (see `face-id') to use
-    while outputting it.  */);
+  DEFVAR_LISP ("glyph-table", &Vglyph_table,
+    "Table defining how to output a glyph code to the frame.\n\
+If not nil, this is a vector indexed by glyph code to define the glyph.\n\
+Each element can be:\n\
+ integer: a glyph code which this glyph is an alias for.\n\
+ string: output this glyph using that string (not impl. in X windows).\n\
+ nil: this glyph mod 524288 is the code of a character to output,\n\
+    and this glyph / 524288 is the face number (see `face-id') to use\n\
+    while outputting it.");
   Vglyph_table = Qnil;
 
-  DEFVAR_LISP ("standard-display-table", &Vstandard_display_table
-    /* Display table to use for buffers that specify none.
-See `buffer-display-table' for more information.  */);
+  DEFVAR_LISP ("standard-display-table", &Vstandard_display_table,
+    "Display table to use for buffers that specify none.\n\
+See `buffer-display-table' for more information.");
   Vstandard_display_table = Qnil;
 
-  DEFVAR_BOOL ("redisplay-dont-pause", &redisplay_dont_pause
-    /* *Non-nil means update isn't paused when input is detected.  */);
+  DEFVAR_BOOL ("redisplay-dont-pause", &redisplay_dont_pause,
+    "*Non-nil means update isn't paused when input is detected.");
   redisplay_dont_pause = 0;
 
   /* Initialize `window-system', unless init_display already decided it.  */

@@ -39,13 +39,16 @@ Boston, MA 02111-1307, USA.  */
 
 int indent_tabs_mode;
 
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#define max(a, b) ((a) > (b) ? (a) : (b))
+
 #define CR 015
 
-/* These three values memorize the current column to avoid recalculation.  */
+/* These three values memoize the current column to avoid recalculation.  */
 
 /* Last value returned by current_column.
    Some things in set last_known_column_point to -1
-   to mark the memorized value as invalid.  */
+   to mark the memoized value as invalid.  */
 
 int last_known_column;
 
@@ -149,7 +152,7 @@ recompute_width_table (buf, disptab)
   struct Lisp_Vector *widthtab;
 
   if (!VECTORP (buf->width_table))
-    buf->width_table = Fmake_vector (make_number (256), make_number (0));
+    buf->width_table = Fmake_vector (make_fixnum (256), make_fixnum (0));
   widthtab = XVECTOR (buf->width_table);
   if (widthtab->size != 256)
     abort ();
@@ -270,7 +273,7 @@ skip_invisible (pos, next_boundary_p, to, window)
     prop = Fget_char_property (position, Qinvisible, window);
   else
     prop = Fget_char_property (position, Qinvisible, buffer);
-  if (TEXT_PROP_MEANS_INVISIBLE (prop) > NILP (window))
+  if (TEXT_PROP_MEANS_INVISIBLE (prop))
     return *next_boundary_p;
   return pos;
 }
@@ -437,7 +440,7 @@ current_column ()
 		 next_element_from_display_vector does it.  */
 	      Lisp_Object entry = AREF (charvec, i);
 	      
-	      if (INTEGERP (entry)
+	      if (FIXNUMP (entry)
 		  && GLYPH_CHAR_VALID_P (XFASTINT (entry)))
 		c = FAST_GLYPH_CHAR (XFASTINT (entry));
 	      else
@@ -462,13 +465,6 @@ current_column ()
 	      col = 0;
 	      tab_seen = 1;
 	    }
-	  else if (VECTORP (charvec))
-	    /* With a display table entry, C is displayed as is, and
-	       not displayed as \NNN or as ^N.  If C is a single-byte
-	       character, it takes one column.  If C is multi-byte in
-	       an unibyte buffer, it's translated to unibyte, so it
-	       also takes one column.  */
-	    ++col;
 	  else
 	    col += (ctl_arrow && c < 0200) ? 2 : 4;
 	}
@@ -581,7 +577,7 @@ current_column_1 ()
 		 next_element_from_display_vector does it.  */
 	      Lisp_Object entry = AREF (charvec, i);
 	      
-	      if (INTEGERP (entry)
+	      if (FIXNUMP (entry)
 		  && GLYPH_CHAR_VALID_P (XFASTINT (entry)))
 		c = FAST_GLYPH_CHAR (XFASTINT (entry));
 	      else
@@ -611,8 +607,6 @@ current_column_1 ()
 	      scan_byte += bytes;
 	      col += width;
 	    }
-	  else if (VECTORP (charvec))
-	    ++col;
 	  else if (ctl_arrow && (c < 040 || c == 0177))
 	    col += 2;
 	  else if (c < 040 || c >= 0177)
@@ -735,7 +729,7 @@ even if that goes past COLUMN; by default, MININUM is zero.")
   if (mincol < XINT (column)) mincol = XINT (column);
 
   if (fromcol == mincol)
-    return make_number (mincol);
+    return make_fixnum (mincol);
 
   if (tab_width <= 0 || tab_width > 1000) tab_width = 8;
 
@@ -745,14 +739,14 @@ even if that goes past COLUMN; by default, MININUM is zero.")
       XSETFASTINT (n, mincol / tab_width - fromcol / tab_width);
       if (XFASTINT (n) != 0)
 	{
-	  Finsert_char (make_number ('\t'), n, Qt);
+	  Finsert_char (make_fixnum ('\t'), n, Qt);
 
 	  fromcol = (mincol / tab_width) * tab_width;
 	}
     }
 
   XSETFASTINT (column, mincol - fromcol);
-  Finsert_char (make_number (' '), column, Qt);
+  Finsert_char (make_fixnum (' '), column, Qt);
 
   last_known_column = mincol;
   last_known_column_point = PT;
@@ -1002,7 +996,7 @@ The return value is the current column.")
 		 next_element_from_display_vector does it.  */
 	      Lisp_Object entry = AREF (charvec, i);
 	      
-	      if (INTEGERP (entry)
+	      if (FIXNUMP (entry)
 		  && GLYPH_CHAR_VALID_P (XFASTINT (entry)))
 		c = FAST_GLYPH_CHAR (XFASTINT (entry));
 	      else
@@ -1022,8 +1016,6 @@ The return value is the current column.")
 	      col += tab_width;
 	      col = col / tab_width * tab_width;
 	    }
-	  else if (VECTORP (charvec))
-	    ++col;
 	  else if (ctl_arrow && (c < 040 || c == 0177))
 	    col += 2;
 	  else if (c < 040 || c == 0177)
@@ -1060,13 +1052,13 @@ The return value is the current column.")
 	 first so that a marker at the end of the tab gets
 	 adjusted.  */
       SET_PT_BOTH (PT - 1, PT_BYTE - 1);
-      Finsert_char (make_number (' '), make_number (goal - prev_col), Qt);
+      Finsert_char (make_fixnum (' '), make_fixnum (goal - prev_col), Qt);
 
       /* Now delete the tab, and indent to COL.  */
       del_range (PT, PT + 1);
       goal_pt = PT;
       goal_pt_byte = PT_BYTE;
-      Findent_to (make_number (col), Qnil);
+      Findent_to (make_fixnum (col), Qnil);
       SET_PT_BOTH (goal_pt, goal_pt_byte);
       
       /* Set the last_known... vars consistently.  */
@@ -1075,7 +1067,7 @@ The return value is the current column.")
 
   /* If line ends prematurely, add space to the end.  */
   if (col < goal && EQ (force, Qt))
-    Findent_to (make_number (col = goal), Qnil);
+    Findent_to (make_fixnum (col = goal), Qnil);
 
   last_known_column = col;
   last_known_column_point = PT;
@@ -1167,7 +1159,7 @@ compute_motion (from, fromvpos, fromhpos, did_motion, to, tovpos, tohpos, width,
   register int ctl_arrow = !NILP (current_buffer->ctl_arrow);
   register struct Lisp_Char_Table *dp = window_display_table (win);
   int selective
-    = (INTEGERP (current_buffer->selective_display)
+    = (FIXNUMP (current_buffer->selective_display)
        ? XINT (current_buffer->selective_display)
        : !NILP (current_buffer->selective_display) ? -1 : 0);
   int prev_hpos = 0;
@@ -1564,7 +1556,7 @@ compute_motion (from, fromvpos, fromhpos, did_motion, to, tovpos, tohpos, width,
 		     next_element_from_display_vector does it.  */
 		  Lisp_Object entry = AREF (charvec, i);
 	      
-		  if (INTEGERP (entry)
+		  if (FIXNUMP (entry)
 		      && GLYPH_CHAR_VALID_P (XFASTINT (entry)))
 		    c = FAST_GLYPH_CHAR (XFASTINT (entry));
 		  else
@@ -1662,8 +1654,6 @@ compute_motion (from, fromvpos, fromhpos, did_motion, to, tovpos, tohpos, width,
 		    wide_column_end_hpos = hpos + wide_column;
 		  hpos += width;
 		}
-	      else if (VECTORP (charvec))
-		++hpos;
 	      else
 		hpos += (ctl_arrow && c < 0200) ? 2 : 4;
 	    }
@@ -1755,18 +1745,18 @@ DEFUN ("compute-motion", Fcompute_motion, Scompute_motion, 7, 7, 0,
 
   CHECK_NUMBER_COERCE_MARKER (from, 0);
   CHECK_CONS (frompos, 0);
-  CHECK_NUMBER_CAR (frompos, 0);
-  CHECK_NUMBER_CDR (frompos, 0);
+  CHECK_NUMBER (XCAR (frompos), 0);
+  CHECK_NUMBER (XCDR (frompos), 0);
   CHECK_NUMBER_COERCE_MARKER (to, 0);
   CHECK_CONS (topos, 0);
-  CHECK_NUMBER_CAR (topos, 0);
-  CHECK_NUMBER_CDR (topos, 0);
+  CHECK_NUMBER (XCAR (topos), 0);
+  CHECK_NUMBER (XCDR (topos), 0);
   CHECK_NUMBER (width, 0);
   if (!NILP (offsets))
     {
       CHECK_CONS (offsets, 0);
-      CHECK_NUMBER_CAR (offsets, 0);
-      CHECK_NUMBER_CDR (offsets, 0);
+      CHECK_NUMBER (XCAR (offsets), 0);
+      CHECK_NUMBER (XCDR (offsets), 0);
       hscroll = XINT (XCAR (offsets));
       tab_offset = XINT (XCDR (offsets));
     }
@@ -1779,9 +1769,9 @@ DEFUN ("compute-motion", Fcompute_motion, Scompute_motion, 7, 7, 0,
     CHECK_LIVE_WINDOW (window, 0);
 
   if (XINT (from) < BEGV || XINT (from) > ZV)
-    args_out_of_range_3 (from, make_number (BEGV), make_number (ZV));
+    args_out_of_range_3 (from, make_fixnum (BEGV), make_fixnum (ZV));
   if (XINT (to) < BEGV || XINT (to) > ZV)
-    args_out_of_range_3 (to, make_number (BEGV), make_number (ZV));
+    args_out_of_range_3 (to, make_fixnum (BEGV), make_fixnum (ZV));
 
   pos = compute_motion (XINT (from), XINT (XCDR (frompos)),
 			XINT (XCAR (frompos)), 0,
@@ -1822,7 +1812,7 @@ vmotion (from, vtarget, w)
   int from_byte;
   int lmargin = hscroll > 0 ? 1 - hscroll : 0;
   int selective
-    = (INTEGERP (current_buffer->selective_display)
+    = (FIXNUMP (current_buffer->selective_display)
        ? XINT (current_buffer->selective_display)
        : !NILP (current_buffer->selective_display) ? -1 : 0);
   Lisp_Object window;
@@ -2006,7 +1996,7 @@ whether or not it is currently displayed in some window.")
   if (BUFFERP (old_buffer))
     w->buffer = old_buffer;
   
-  RETURN_UNGCPRO (make_number (it.vpos));
+  RETURN_UNGCPRO (make_fixnum (it.vpos));
 }
 
 

@@ -1,5 +1,5 @@
 /* Functions for Sun Windows menus and selection buffer.
-   Copyright (C) 1987, 1999, 2001 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1999 Free Software Foundation, Inc.
 
 This file is probably totally obsolete.  In any case, the FSF is
 unwilling to support it.  We agreed to include it in our distribution
@@ -141,7 +141,7 @@ or -1 if can not open it.")
 #endif
       }
   }
-  return(make_number(win_fd));
+  return(make_fixnum(win_fd));
 }
 
 /*
@@ -366,7 +366,7 @@ sun_item_create (Pair)
   CHECK_STRING(String, 0);
   Value = Fcdr(Pair);
   if (SYMBOLP (Value))
-    Value = SYMBOL_VALUE (Value);
+    Value = XSYMBOL(Value)->value;
   if (VECTORP (Value)) {
     submenu = sun_menu_create (Value);
     menu_item = menu_create_item

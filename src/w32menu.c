@@ -25,7 +25,6 @@ Boston, MA 02111-1307, USA.  */
 #include "lisp.h"
 #include "termhooks.h"
 #include "keyboard.h"
-#include "keymap.h"
 #include "frame.h"
 #include "window.h"
 #include "blockinput.h"
@@ -113,6 +112,9 @@ typedef struct _widget_value
 #define free_widget_value(wv) LocalFree (wv)
 
 /******************************************************************/
+
+#define min(x,y) (((x) < (y)) ? (x) : (y))
+#define max(x,y) (((x) > (y)) ? (x) : (y))
 
 #ifndef TRUE
 #define TRUE 1
@@ -252,7 +254,7 @@ init_menu_items ()
   if (NILP (menu_items))
     {
       menu_items_allocated = 60;
-      menu_items = Fmake_vector (make_number (menu_items_allocated), Qnil);
+      menu_items = Fmake_vector (make_fixnum (menu_items_allocated), Qnil);
     }
 
   menu_items_used = 0;
@@ -293,7 +295,7 @@ grow_menu_items ()
   old = menu_items;
 
   menu_items_allocated *= 2;
-  menu_items = Fmake_vector (make_number (menu_items_allocated), Qnil);
+  menu_items = Fmake_vector (make_fixnum (menu_items_allocated), Qnil);
   bcopy (XVECTOR (old)->contents, XVECTOR (menu_items)->contents,
 	 old_size * sizeof (Lisp_Object));
 }
@@ -395,7 +397,7 @@ keymap_panes (keymaps, nmaps, notreal)
      P is the number of panes we have made so far.  */
   for (mapno = 0; mapno < nmaps; mapno++)
     single_keymap_panes (keymaps[mapno],
-                         Fkeymap_prompt (keymaps[mapno]), Qnil, notreal, 10);
+                         map_prompt (keymaps[mapno]), Qnil, notreal, 10);
 
   finish_menu_items ();
 }
@@ -728,7 +730,7 @@ cached information about equivalent key sequences.")
 
       /* Search for a string appearing directly as an element of the keymap.
 	 That string is the title of the menu.  */
-      prompt = Fkeymap_prompt (keymap);
+      prompt = map_prompt (keymap);
       if (NILP (title) && !NILP (prompt))
 	title = prompt;
 
@@ -756,7 +758,7 @@ cached information about equivalent key sequences.")
 
 	  maps[i++] = keymap = get_keymap (Fcar (tem), 1, 0);
 
-	  prompt = Fkeymap_prompt (keymap);
+	  prompt = map_prompt (keymap);
 	  if (NILP (title) && !NILP (prompt))
 	    title = prompt;
 	}
@@ -962,7 +964,6 @@ menubar_selection_callback (FRAME_PTR f, void * client_data)
 
   if (!f)
     return;
-  entry = Qnil;
   subprefix_stack = (Lisp_Object *) alloca (f->menu_bar_items_used * sizeof (Lisp_Object));
   vector = f->menu_bar_vector;
   prefix = Qnil;
@@ -1353,13 +1354,12 @@ set_frame_menubar (f, first_time, deep_p)
       inhibit_garbage_collection ();
 
       /* Save the frame's previous menu bar contents data.  */
-      if (previous_menu_items_used)
-	bcopy (XVECTOR (f->menu_bar_vector)->contents, previous_items,
-	       previous_menu_items_used * sizeof (Lisp_Object));
+      bcopy (XVECTOR (f->menu_bar_vector)->contents, previous_items,
+	     previous_menu_items_used * sizeof (Lisp_Object));
 
       /* Fill in the current menu bar contents.  */
       menu_items = f->menu_bar_vector;
-      menu_items_allocated = VECTORP (menu_items) ? ASIZE (menu_items) : 0;
+      menu_items_allocated = XVECTOR (menu_items)->size;
       init_menu_items ();
       for (i = 0; i < XVECTOR (items)->size; i += 4)
 	{
@@ -1765,7 +1765,7 @@ w32_menu_show (f, x, y, for_click, keymaps, title, error)
     {
       Lisp_Object prefix, entry;
 
-      prefix = entry = Qnil;
+      prefix = Qnil;
       i = 0;
       while (i < menu_items_used)
 	{
@@ -1833,7 +1833,7 @@ w32_dialog_show (f, keymaps, title, error)
   char dialog_name[6];
   int menu_item_selection;
 
-  widget_value *wv, *first_wv = 0, *prev_wv = 0;
+  widget_value *wv, *save_wv = 0, *first_wv = 0, *prev_wv = 0;
 
   /* Number of elements seen so far, before boundary.  */
   int left_count = 0;
@@ -2012,14 +2012,9 @@ static int
 name_is_separator (name)
      char *name;
 {
-  char *start = name;
-
-  /* Check if name string consists of only dashes ('-').  */
+  /* Check if name string consists of only dashes ('-') */
   while (*name == '-') name++;
-  /* Separators can also be of the form "--:TripleSuperMegaEtched"
-     or "--deep-shadow".  We don't implement them yet, se we just treat
-     them like normal separators.  */
-  return (*name == '\0' || start + 2 == name);
+  return (*name == '\0');
 }
 
 
@@ -2192,11 +2187,11 @@ w32_menu_display_help (HMENU menu, UINT item, UINT flags)
       /* (menu-item MENU-NAME PANE-NUMBER)  */
       menu_object = Fcons (Qmenu_item,
                            Fcons (pane_name,
-                                  Fcons (make_number (pane), Qnil)));
+                                  Fcons (make_fixnum (pane), Qnil)));
 
       show_help_echo (info.dwItemData ?
 		      build_string ((char *) info.dwItemData) : Qnil,
-                      Qnil, menu_object, make_number (item), 1);
+                      Qnil, menu_object, make_fixnum (item), 1);
     }
 }
 

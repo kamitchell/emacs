@@ -265,12 +265,12 @@ status_convert (w)
      WAITTYPE w;
 {
   if (WIFSTOPPED (w))
-    return Fcons (Qstop, Fcons (make_number (WSTOPSIG (w)), Qnil));
+    return Fcons (Qstop, Fcons (make_fixnum (WSTOPSIG (w)), Qnil));
   else if (WIFEXITED (w))
-    return Fcons (Qexit, Fcons (make_number (WRETCODE (w)),
+    return Fcons (Qexit, Fcons (make_fixnum (WRETCODE (w)),
 				WCOREDUMP (w) ? Qt : Qnil));
   else if (WIFSIGNALED (w))
-    return Fcons (Qsignal, Fcons (make_number (WTERMSIG (w)),
+    return Fcons (Qsignal, Fcons (make_fixnum (WTERMSIG (w)),
 				  WCOREDUMP (w) ? Qt : Qnil));
   else
     return Qrun;
@@ -332,7 +332,7 @@ status_message (status)
     {
       if (code == 0)
 	return build_string ("finished\n");
-      string = Fnumber_to_string (make_number (code));
+      string = Fnumber_to_string (make_fixnum (code));
       string2 = build_string (coredump ? " (core dumped)\n" : "\n");
       return concat2 (build_string ("exited abnormally with code "),
 		      concat2 (string, string2));
@@ -571,7 +571,7 @@ nil, indicating the current buffer's process.")
   XPROCESS (process)->raw_status_high = Qnil;
   if (NETCONN_P (process))
     {
-      XPROCESS (process)->status = Fcons (Qexit, Fcons (make_number (0), Qnil));
+      XPROCESS (process)->status = Fcons (Qexit, Fcons (make_fixnum (0), Qnil));
       XSETINT (XPROCESS (process)->tick, ++process_tick);
     }
   else if (XINT (XPROCESS (process)->infd) >= 0)
@@ -579,7 +579,7 @@ nil, indicating the current buffer's process.")
       Fkill_process (process, Qnil);
       /* Do this now, since remove_process will make sigchld_handler do nothing.  */
       XPROCESS (process)->status 
-	= Fcons (Qsignal, Fcons (make_number (SIGKILL), Qnil));
+	= Fcons (Qsignal, Fcons (make_fixnum (SIGKILL), Qnil));
       XSETINT (XPROCESS (process)->tick, ++process_tick);
       status_notify ();
     }
@@ -641,7 +641,7 @@ If PROCESS has not yet exited or died, return 0.")
     update_status (XPROCESS (process));
   if (CONSP (XPROCESS (process)->status))
     return XCAR (XCDR (XPROCESS (process)->status));
-  return make_number (0);
+  return make_fixnum (0);
 }
 
 DEFUN ("process-id", Fprocess_id, Sprocess_id, 1, 1, 0,
@@ -927,7 +927,7 @@ Proc         Status   Buffer         Tty         Command\n\
 	continue;
 
       Finsert (1, &p->name);
-      Findent_to (make_number (13), minspace);
+      Findent_to (make_fixnum (13), minspace);
 
       if (!NILP (p->raw_status_low))
 	update_status (p);
@@ -973,7 +973,7 @@ Proc         Status   Buffer         Tty         Command\n\
       if (EQ (symbol, Qsignal) || EQ (symbol, Qexit))
 	remove_process (proc);
 
-      Findent_to (make_number (22), minspace);
+      Findent_to (make_fixnum (22), minspace);
       if (NILP (p->buffer))
 	insert_string ("(none)");
       else if (NILP (XBUFFER (p->buffer)->name))
@@ -981,14 +981,14 @@ Proc         Status   Buffer         Tty         Command\n\
       else
 	Finsert (1, &XBUFFER (p->buffer)->name);
 
-      Findent_to (make_number (37), minspace);
+      Findent_to (make_fixnum (37), minspace);
 
       if (STRINGP (p->tty_name))
 	Finsert (1, &p->tty_name);
       else
 	insert_string ("(none)");
 
-      Findent_to (make_number (49), minspace);
+      Findent_to (make_fixnum (49), minspace);
 
       if (NETCONN_P (proc))
         {
@@ -1196,7 +1196,7 @@ Remaining arguments are strings to give program as arguments.")
 
       tem = Qnil;
       GCPRO4 (name, program, buffer, current_dir);
-      openp (Vexec_path, program, Vexec_suffixes, &tem, 1);
+      openp (Vexec_path, program, EXEC_SUFFIXES, &tem, 1);
       UNGCPRO;
       if (NILP (tem))
 	report_file_error ("Searching for program", Fcons (program, Qnil));
@@ -1231,9 +1231,9 @@ Remaining arguments are strings to give program as arguments.")
 #endif /* not VMS */
 
   XPROCESS (proc)->decoding_buf = make_uninit_string (0);
-  XPROCESS (proc)->decoding_carryover = make_number (0);
+  XPROCESS (proc)->decoding_carryover = make_fixnum (0);
   XPROCESS (proc)->encoding_buf = make_uninit_string (0);
-  XPROCESS (proc)->encoding_carryover = make_number (0);
+  XPROCESS (proc)->encoding_carryover = make_fixnum (0);
 
   XPROCESS (proc)->inherit_coding_system_flag
     = (NILP (buffer) || !inherit_process_coding_system
@@ -1792,7 +1792,7 @@ Fourth arg SERVICE is name of the service desired, or an integer\n\
 #ifdef HAVE_GETADDRINFO
   /* SERVICE can either be a string or int.
      Convert to a C string for later use by getaddrinfo.  */
-  if (INTEGERP (service))
+  if (FIXNUMP (service))
     {
       sprintf (portbuf, "%ld", (long) XINT (service));
       portstring = portbuf;
@@ -1803,7 +1803,7 @@ Fourth arg SERVICE is name of the service desired, or an integer\n\
       portstring = XSTRING (service)->data;
     }
 #else /* HAVE_GETADDRINFO */
-  if (INTEGERP (service))
+  if (FIXNUMP (service))
     port = htons ((unsigned short) XINT (service));
   else
     {
@@ -1867,7 +1867,7 @@ Fourth arg SERVICE is name of the service desired, or an integer\n\
 
       /* Make us close S if quit.  */
       count1 = specpdl_ptr - specpdl;
-      record_unwind_protect (close_file_unwind, make_number (s));
+      record_unwind_protect (close_file_unwind, make_fixnum (s));
 
     loop:
 
@@ -1900,7 +1900,7 @@ Fourth arg SERVICE is name of the service desired, or an integer\n\
 	  /* A delay here is needed on some FreeBSD systems,
 	     and it is harmless, since this retrying takes time anyway
 	     and should be infrequent.  */
-	  Fsleep_for (make_number (1), Qnil);
+	  Fsleep_for (make_fixnum (1), Qnil);
 	  retry++;
 	  goto loop;
 	}
@@ -1943,7 +1943,7 @@ Fourth arg SERVICE is name of the service desired, or an integer\n\
 #endif
 #endif
 	break;
-      Fsleep_for (make_number (1), Qnil);
+      Fsleep_for (make_fixnum (1), Qnil);
     }
   
   if (host_info_ptr == 0)
@@ -1980,7 +1980,7 @@ Fourth arg SERVICE is name of the service desired, or an integer\n\
     report_file_error ("error creating socket", Fcons (name, Qnil));
 
   count1 = specpdl_ptr - specpdl;
-  record_unwind_protect (close_file_unwind, make_number (s));
+  record_unwind_protect (close_file_unwind, make_fixnum (s));
 
   /* Kernel bugs (on Ultrix at least) cause lossage (not just EINTR)
      when connect is interrupted.  So let's not let it get interrupted.
@@ -2010,7 +2010,7 @@ Fourth arg SERVICE is name of the service desired, or an integer\n\
 	  /* A delay here is needed on some FreeBSD systems,
 	     and it is harmless, since this retrying takes time anyway
 	     and should be infrequent.  */
-	  Fsleep_for (make_number (1), Qnil);
+	  Fsleep_for (make_fixnum (1), Qnil);
 	  retry++;
 	  goto loop;
 	}
@@ -2150,9 +2150,9 @@ Fourth arg SERVICE is name of the service desired, or an integer\n\
 		       proc_encode_coding_system[outch]);
 
   XPROCESS (proc)->decoding_buf = make_uninit_string (0);
-  XPROCESS (proc)->decoding_carryover = make_number (0);
+  XPROCESS (proc)->decoding_carryover = make_fixnum (0);
   XPROCESS (proc)->encoding_buf = make_uninit_string (0);
-  XPROCESS (proc)->encoding_carryover = make_number (0);
+  XPROCESS (proc)->encoding_carryover = make_fixnum (0);
 
   XPROCESS (proc)->inherit_coding_system_flag
     = (NILP (buffer) || !inherit_process_coding_system
@@ -2258,7 +2258,7 @@ Return non-nil iff we received any output before the timeout expired.")
     {
       CHECK_NUMBER (timeout_msecs, 2);
       useconds = XINT (timeout_msecs);
-      if (!INTEGERP (timeout))
+      if (!FIXNUMP (timeout))
 	XSETINT (timeout, 0);
 
       {
@@ -2367,9 +2367,7 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
   int wait_channel = -1;
   struct Lisp_Process *wait_proc = 0;
   int got_some_input = 0;
-  /* Either nil or a cons cell, the car of which is of interest and
-     may be changed outside of this routine.  */
-  Lisp_Object wait_for_cell = Qnil;
+  Lisp_Object *wait_for_cell = 0;
 
   FD_ZERO (&Available);
 
@@ -2385,7 +2383,7 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
   /* If waiting for non-nil in a cell, record where.  */
   if (CONSP (read_kbd))
     {
-      wait_for_cell = read_kbd;
+      wait_for_cell = &XCAR (read_kbd);
       XSETFASTINT (read_kbd, 0);
     }
 
@@ -2419,7 +2417,7 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 	QUIT;
 
       /* Exit now if the cell we're waiting for became non-nil.  */
-      if (! NILP (wait_for_cell) && ! NILP (XCAR (wait_for_cell)))
+      if (wait_for_cell && ! NILP (*wait_for_cell))
 	break;
 
       /* Compute time from now till when time limit is up */
@@ -2448,7 +2446,7 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 	 But not if wait_for_cell; in those cases,
 	 the wait is supposed to be short,
 	 and those callers cannot handle running arbitrary Lisp code here.  */
-      if (NILP (wait_for_cell))
+      if (! wait_for_cell)
 	{
 	  EMACS_TIME timer_delay;
 
@@ -2569,7 +2567,7 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 
       /* Wait till there is something to do */
 
-      if (!NILP (wait_for_cell))
+      if (wait_for_cell)
 	Available = non_process_wait_mask;
       else if (! XINT (read_kbd))
 	Available = non_keyboard_wait_mask;
@@ -2725,7 +2723,7 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 	}
 
       /* Exit now if the cell we're waiting for became non-nil.  */
-      if (! NILP (wait_for_cell) && ! NILP (XCAR (wait_for_cell)))
+      if (wait_for_cell && ! NILP (*wait_for_cell))
 	break;
 
 #ifdef SIGIO
@@ -2744,7 +2742,7 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 
       /* If checking input just got us a size-change event from X,
 	 obey it now if we should.  */
-      if (XINT (read_kbd) || ! NILP (wait_for_cell))
+      if (XINT (read_kbd) || wait_for_cell)
 	do_pending_window_change (0);
 
       /* Check for data from a process.  */
@@ -2836,7 +2834,7 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 		    update_status (XPROCESS (proc));
 		  if (EQ (XPROCESS (proc)->status, Qrun))
 		    XPROCESS (proc)->status
-		      = Fcons (Qexit, Fcons (make_number (256), Qnil));
+		      = Fcons (Qexit, Fcons (make_fixnum (256), Qnil));
 		}
 	    }
 	}			/* end for each file descriptor */
@@ -2881,7 +2879,7 @@ read_process_output_error_handler (error)
   cmd_error_internal (error, "error in process filter: ");
   Vinhibit_quit = Qt;
   update_echo_area ();
-  Fsleep_for (make_number (2), Qnil);
+  Fsleep_for (make_fixnum (2), Qnil);
   return Qt;
 }
 
@@ -3193,7 +3191,7 @@ read_process_output (proc, channel)
 
       /* If the restriction isn't what it should be, set it.  */
       if (old_begv != BEGV || old_zv != ZV)
-	Fnarrow_to_region (make_number (old_begv), make_number (old_zv));
+	Fnarrow_to_region (make_fixnum (old_begv), make_fixnum (old_zv));
 
       /* Handling the process output should not deactivate the mark.  */
       Vdeactivate_mark = odeactivate;
@@ -3326,13 +3324,8 @@ send_process (proc, buf, len, object)
 	  to =  string_byte_to_char (object, from_byte + len);
 	}
 
-      if (coding->composing != COMPOSITION_DISABLED)
-	{
-	  if (from_byte >= 0)
-	    coding_save_composition (coding, from, to, object);
-	  else
-	    coding->composing = COMPOSITION_DISABLED;
-	}
+      if (from_byte >= 0 && coding->composing != COMPOSITION_DISABLED)
+	coding_save_composition (coding, from, to, object);
 
       if (STRING_BYTES (XSTRING (XPROCESS (proc)->encoding_buf)) < require)
 	XPROCESS (proc)->encoding_buf = make_uninit_string (require);
@@ -3388,8 +3381,8 @@ send_process (proc, buf, len, object)
 	     Long lines need to be split into multiple batches.  */
 	  if (!NILP (XPROCESS (proc)->pty_flag))
 	    {
-	      /* Starting this at zero is always correct when not the first
-                 iteration because the previous iteration ended by sending C-d.
+	      /* Starting this at zero is always correct when not the first iteration
+		 because the previous iteration ended by sending C-d.
 		 It may not be correct for the first iteration
 		 if a partial line was sent in a separate send_process call.
 		 If that proves worth handling, we need to save linepos
@@ -3507,7 +3500,7 @@ send_process (proc, buf, len, object)
 #endif
       XPROCESS (proc)->raw_status_low = Qnil;
       XPROCESS (proc)->raw_status_high = Qnil;
-      XPROCESS (proc)->status = Fcons (Qexit, Fcons (make_number (256), Qnil));
+      XPROCESS (proc)->status = Fcons (Qexit, Fcons (make_fixnum (256), Qnil));
       XSETINT (XPROCESS (proc)->tick, ++process_tick);
       deactivate_process (proc);
 #ifdef VMS
@@ -3912,7 +3905,7 @@ SIGCODE may be an integer, or a symbol whose name is a signal name.")
   else if (!strcmp (name, NAME))		\
     XSETINT (sigcode, VALUE)
 
-  if (INTEGERP (sigcode))
+  if (FIXNUMP (sigcode))
     ;
   else
     {
@@ -4019,7 +4012,7 @@ SIGCODE may be an integer, or a symbol whose name is a signal name.")
 
 #undef handle_signal
 
-  return make_number (kill (XINT (pid), XINT (sigcode)));
+  return make_fixnum (kill (XINT (pid), XINT (sigcode)));
 }
 
 DEFUN ("process-send-eof", Fprocess_send_eof, Sprocess_send_eof, 0, 1, 0,
@@ -4093,7 +4086,7 @@ text to PROCESS after you call this function.")
 }
 
 /* Kill all processes associated with `buffer'.
-   If `buffer' is nil, kill all processes  */
+ If `buffer' is nil, kill all processes  */
 
 void
 kill_buffer_processes (buffer)
@@ -4115,27 +4108,26 @@ kill_buffer_processes (buffer)
     }
 }
 
-/* On receipt of a signal that a child status has changed, loop asking
-   about children with changed statuses until the system says there
-   are no more.
-   
-   All we do is change the status; we do not run sentinels or print
-   notifications.  That is saved for the next time keyboard input is
-   done, in order to avoid timing errors.
+/* On receipt of a signal that a child status has changed,
+ loop asking about children with changed statuses until
+ the system says there are no more.
+   All we do is change the status;
+ we do not run sentinels or print notifications.
+ That is saved for the next time keyboard input is done,
+ in order to avoid timing errors.  */
 
-   ** WARNING: this can be called during garbage collection.
-   Therefore, it must not be fooled by the presence of mark bits in
-   Lisp objects.
+/** WARNING: this can be called during garbage collection.
+ Therefore, it must not be fooled by the presence of mark bits in
+ Lisp objects.  */
 
-   ** USG WARNING: Although it is not obvious from the documentation
-   in signal(2), on a USG system the SIGCLD handler MUST NOT call
-   signal() before executing at least one wait(), otherwise the
-   handler will be called again, resulting in an infinite loop.  The
-   relevant portion of the documentation reads "SIGCLD signals will be
-   queued and the signal-catching function will be continually
-   reentered until the queue is empty".  Invoking signal() causes the
-   kernel to reexamine the SIGCLD queue.  Fred Fish, UniSoft Systems
-   Inc. */
+/** USG WARNING:  Although it is not obvious from the documentation
+ in signal(2), on a USG system the SIGCLD handler MUST NOT call
+ signal() before executing at least one wait(), otherwise the handler
+ will be called again, resulting in an infinite loop.  The relevant
+ portion of the documentation reads "SIGCLD signals will be queued
+ and the signal-catching function will be continually reentered until
+ the queue is empty".  Invoking signal() causes the kernel to reexamine
+ the SIGCLD queue.   Fred Fish, UniSoft Systems Inc. */
 
 SIGTYPE
 sigchld_handler (signo)
@@ -4167,12 +4159,11 @@ sigchld_handler (signo)
 	  errno = 0;
 	  pid = wait3 (&w, WNOHANG | WUNTRACED, 0);
 	}
-      while (pid < 0 && errno == EINTR);
+      while (pid <= 0 && errno == EINTR);
 
       if (pid <= 0)
 	{
-	  /* PID == 0 means no processes found, PID == -1 means a real
-	     failure.  We have done all our job, so return.  */
+	  /* A real failure.  We have done all our job, so return.  */
 
 	  /* USG systems forget handlers when they are used;
 	     must reestablish each time */
@@ -4193,11 +4184,11 @@ sigchld_handler (signo)
       /* Find the process that signaled us, and record its status.  */
 
       p = 0;
-      for (tail = Vprocess_alist; GC_CONSP (tail); tail = XCDR (tail))
+      for (tail = Vprocess_alist; CONSP (tail); tail = XCDR (tail))
 	{
 	  proc = XCDR (XCAR (tail));
 	  p = XPROCESS (proc);
-	  if (GC_EQ (p->childp, Qt) && XINT (p->pid) == pid)
+	  if (EQ (p->childp, Qt) && XFASTINT (p->pid) == pid)
 	    break;
 	  p = 0;
 	}
@@ -4205,11 +4196,11 @@ sigchld_handler (signo)
       /* Look for an asynchronous process whose pid hasn't been filled
 	 in yet.  */
       if (p == 0)
-	for (tail = Vprocess_alist; GC_CONSP (tail); tail = XCDR (tail))
+	for (tail = Vprocess_alist; CONSP (tail); tail = XCDR (tail))
 	  {
 	    proc = XCDR (XCAR (tail));
 	    p = XPROCESS (proc);
-	    if (GC_INTEGERP (p->pid) && XINT (p->pid) == -1)
+	    if (FIXNUMP (p->pid) && XINT (p->pid) == -1)
 	      break;
 	    p = 0;
 	  }
@@ -4277,9 +4268,7 @@ sigchld_handler (signo)
 	 get another signal.
 	 Otherwise (on systems that have WNOHANG), loop around
 	 to use up all the processes that have something to tell us.  */
-#if (defined WINDOWSNT \
-     || (defined USG && !defined LINUX \
-         && !(defined HPUX && defined WNOHANG)))
+#if defined (USG) && ! (defined (HPUX) && defined (WNOHANG)) || defined (WINDOWSNT)
 #if defined (USG) && ! defined (POSIX_SIGNALS)
       signal (signo, sigchld_handler);
 #endif
@@ -4305,7 +4294,7 @@ exec_sentinel_error_handler (error)
   cmd_error_internal (error, "error in process sentinel: ");
   Vinhibit_quit = Qt;
   update_echo_area ();
-  Fsleep_for (make_number (2), Qnil);
+  Fsleep_for (make_fixnum (2), Qnil);
   return Qt;
 }
 
@@ -4770,14 +4759,12 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
   EMACS_TIME end_time, timeout;
   SELECT_TYPE waitchannels;
   int xerrno;
-  /* Either nil or a cons cell, the car of which is of interest and
-     may be changed outside of this routine.  */
-  Lisp_Object wait_for_cell = Qnil;
+  Lisp_Object *wait_for_cell = 0;
 
   /* If waiting for non-nil in a cell, record where.  */
   if (CONSP (read_kbd))
     {
-      wait_for_cell = read_kbd;
+      wait_for_cell = &XCAR (read_kbd);
       XSETFASTINT (read_kbd, 0);
     }
 
@@ -4804,7 +4791,7 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 	QUIT;
 
       /* Exit now if the cell we're waiting for became non-nil.  */
-      if (! NILP (wait_for_cell) && ! NILP (XCAR (wait_for_cell)))
+      if (wait_for_cell && ! NILP (*wait_for_cell))
 	break;
 
       /* Compute time from now till when time limit is up */
@@ -4833,7 +4820,7 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 	 run timer events directly.
 	 (Callers that will immediately read keyboard events
 	 call timer_delay on their own.)  */
-      if (NILP (wait_for_cell))
+      if (! wait_for_cell)
 	{
 	  EMACS_TIME timer_delay;
 
@@ -4874,7 +4861,7 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 
       /* Wait till there is something to do.  */
 
-      if (! XINT (read_kbd) && NILP (wait_for_cell))
+      if (! XINT (read_kbd) && wait_for_cell == 0)
 	FD_ZERO (&waitchannels);
       else
 	FD_SET (0, &waitchannels);
@@ -4950,7 +4937,7 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 	 input at all when wait_for_cell, but the code
 	 has been this way since July 1994.
 	 Try changing this after version 19.31.)  */
-      if (! NILP (wait_for_cell)
+      if (wait_for_cell
 	  && detect_input_pending ())
 	{
 	  swallow_events (do_display);
@@ -4959,7 +4946,7 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 	}
 
       /* Exit now if the cell we're waiting for became non-nil.  */
-      if (! NILP (wait_for_cell) && ! NILP (XCAR (wait_for_cell)))
+      if (wait_for_cell && ! NILP (*wait_for_cell))
 	break;
     }
 
@@ -4969,9 +4956,9 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 }
 
 
-/* Don't confuse make-docfile by having two doc strings for this function.
-   make-docfile does not pay attention to #if, for good reason!  */
 DEFUN ("get-buffer-process", Fget_buffer_process, Sget_buffer_process, 1, 1, 0,
+  /* Don't confuse make-docfile by having two doc strings for this function.
+     make-docfile does not pay attention to #if, for good reason!  */
   0)
   (name)
      register Lisp_Object name;
@@ -4979,11 +4966,11 @@ DEFUN ("get-buffer-process", Fget_buffer_process, Sget_buffer_process, 1, 1, 0,
   return Qnil;
 }
 
-  /* Don't confuse make-docfile by having two doc strings for this function.
-     make-docfile does not pay attention to #if, for good reason!  */
 DEFUN ("process-inherit-coding-system-flag",
   Fprocess_inherit_coding_system_flag, Sprocess_inherit_coding_system_flag,
   1, 1, 0,
+  /* Don't confuse make-docfile by having two doc strings for this function.
+     make-docfile does not pay attention to #if, for good reason!  */
   0)
   (process)
      register Lisp_Object process;

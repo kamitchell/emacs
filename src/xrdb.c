@@ -33,15 +33,12 @@ Boston, MA 02111-1307, USA.  */
 #include <stdio.h>
 
 #if 1 /* I'd really appreciate it if this code could go away...  -JimB */
-/* This avoids lossage in the `dual-universe' headers on AT&T SysV
-   X11.  Don't do it on Solaris, because it breaks compilation with
-   XFree86 4.0.3 (and probably many other X11R6 releases) on Solaris
-   2 */
-#if defined(USG5) && !defined(SOLARIS2)
+/* this avoids lossage in the `dual-universe' headers on AT&T SysV X11 */
+#ifdef USG5
 #ifndef SYSV
 #define SYSV
 #endif
-#endif /* USG5 && !SOLARIS2 */
+#endif /* USG5 */
 
 #endif /* 1 */
 
@@ -580,7 +577,7 @@ x_load_resources (display, xrm_string, myname, myclass)
 
   /* Set double click time of list boxes in the file selection
      dialog from `double-click-time'.  */
-  if (INTEGERP (Vdouble_click_time) && XINT (Vdouble_click_time) > 0)
+  if (FIXNUMP (Vdouble_click_time) && XINT (Vdouble_click_time) > 0)
     {
       sprintf (line, "%s*fsb*DirList.doubleClickInterval: %d",
 	       myclass, XFASTINT (Vdouble_click_time));

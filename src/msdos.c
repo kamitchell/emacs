@@ -303,8 +303,8 @@ mouse_get_pos (f, insist, bar_window, part, x, y, time)
   *bar_window = Qnil;
   mouse_get_xy (&ix, &iy);
   *time = event_timestamp ();
-  *x = make_number (mouse_last_x = ix);
-  *y = make_number (mouse_last_y = iy);
+  *x = make_fixnum (mouse_last_x = ix);
+  *y = make_fixnum (mouse_last_y = iy);
 }
 
 static void
@@ -468,29 +468,29 @@ do_visible_bell (xorattr)
      unsigned char xorattr;
 {
   asm volatile
-    ("  movb   $1,%%dl				\n\
-visible_bell_0:					\n\
-	movl   _ScreenPrimary,%%eax		\n\
-	call   dosmemsetup			\n\
-	movl   %%eax,%%ebx			\n\
-	movl   %1,%%ecx				\n\
-	movb   %0,%%al				\n\
-	incl   %%ebx				\n\
-visible_bell_1:					\n\
-	xorb   %%al,%%gs:(%%ebx)		\n\
-	addl   $2,%%ebx				\n\
-	decl   %%ecx				\n\
-	jne    visible_bell_1			\n\
-	decb   %%dl				\n\
-	jne    visible_bell_3			\n\
-visible_bell_2:					\n\
-	movzwl %%ax,%%eax			\n\
-        movzwl %%ax,%%eax			\n\
-	movzwl %%ax,%%eax			\n\
-	movzwl %%ax,%%eax			\n\
-	decw   %%cx				\n\
-	jne    visible_bell_2			\n\
-	jmp    visible_bell_0                   \n\
+    ("  movb   $1,%%dl
+visible_bell_0:
+	movl   _ScreenPrimary,%%eax
+	call   dosmemsetup
+	movl   %%eax,%%ebx
+	movl   %1,%%ecx
+	movb   %0,%%al
+	incl   %%ebx
+visible_bell_1:
+	xorb   %%al,%%gs:(%%ebx)
+	addl   $2,%%ebx
+	decl   %%ecx
+	jne    visible_bell_1
+	decb   %%dl
+	jne    visible_bell_3
+visible_bell_2:
+	movzwl %%ax,%%eax
+        movzwl %%ax,%%eax
+	movzwl %%ax,%%eax
+	movzwl %%ax,%%eax
+	decw   %%cx
+	jne    visible_bell_2
+	jmp    visible_bell_0
 visible_bell_3:"
      : /* no output */
      : "m" (xorattr), "g" (screen_size)
@@ -582,7 +582,7 @@ dos_set_window_size (rows, cols)
   video_mode = XSYMBOL (Fintern_soft (build_string (video_name),
 				      Qnil))-> value;
 
-  if (INTEGERP (video_mode)
+  if (FIXNUMP (video_mode)
       && (video_mode_value = XINT (video_mode)) > 0)
     {
       regs.x.ax = video_mode_value;
@@ -826,7 +826,7 @@ IT_set_cursor_type (struct frame *f, Lisp_Object cursor_type)
       Lisp_Object bar_parms = XCDR (cursor_type);
       int width;
 
-      if (INTEGERP (bar_parms))
+      if (FIXNUMP (bar_parms))
 	{
 	  /* Feature: negative WIDTH means cursor at the top
 	     of the character cell, zero means invisible cursor.  */
@@ -835,8 +835,8 @@ IT_set_cursor_type (struct frame *f, Lisp_Object cursor_type)
 				  width);
 	}
       else if (CONSP (bar_parms)
-	       && INTEGERP (XCAR (bar_parms))
-	       && INTEGERP (XCDR (bar_parms)))
+	       && FIXNUMP (XCAR (bar_parms))
+	       && FIXNUMP (XCDR (bar_parms)))
 	{
 	  int start_line = XINT (XCDR (bar_parms));
 
@@ -1459,7 +1459,7 @@ IT_note_mode_line_highlight (struct window *w, int x, int mode_line_p)
 	  /* If we're on a string with `help-echo' text property,
 	     arrange for the help to be displayed.  This is done by
 	     setting the global variable help_echo to the help string.  */
-	  help = Fget_text_property (make_number (glyph->charpos),
+	  help = Fget_text_property (make_fixnum (glyph->charpos),
 				     Qhelp_echo, glyph->object);
 	  if (!NILP (help))
 	    {
@@ -1691,7 +1691,7 @@ IT_note_mouse_highlight (struct frame *f, int x, int y)
 		XSETINT (end, (BUF_Z (XBUFFER (w->buffer))
 			       - XFASTINT (w->window_end_pos)));
 		before
-		  = Fprevious_single_property_change (make_number (pos + 1),
+		  = Fprevious_single_property_change (make_fixnum (pos + 1),
 						      Qmouse_face,
 						      w->buffer, beginning);
 		after
@@ -1744,7 +1744,7 @@ IT_note_mouse_highlight (struct frame *f, int x, int y)
 			   && glyph->charpos >= BEGV
 			   && glyph->charpos < ZV)))
 	    {
-	      help = Fget_text_property (make_number (glyph->charpos),
+	      help = Fget_text_property (make_fixnum (glyph->charpos),
 					 Qhelp_echo, glyph->object);
 	      if (!NILP (help))
 		{
@@ -2058,7 +2058,7 @@ IT_frame_up_to_date (struct frame *f)
       if (EQ (b->cursor_type, Qt))
 	new_cursor = frame_desired_cursor;
       else if (NILP (b->cursor_type)) /* nil means no cursor */
-	new_cursor = Fcons (Qbar, make_number (0));
+	new_cursor = Fcons (Qbar, make_fixnum (0));
       else
 	new_cursor = b->cursor_type;
     }
@@ -2554,7 +2554,7 @@ internal_terminal_init ()
     }
 
   Vwindow_system = intern ("pc");
-  Vwindow_system_version = make_number (1);
+  Vwindow_system_version = make_fixnum (1);
   sf->output_method = output_msdos_raw;
 
   /* If Emacs was dumped on DOS/V machine, forget the stale VRAM address.  */
@@ -3193,11 +3193,11 @@ dos_rawgetc ()
 
       total_doskeys += 2;
       XVECTOR (recent_doskeys)->contents[recent_doskeys_index++]
-	= make_number (c);
+	= make_fixnum (c);
       if (recent_doskeys_index == NUM_RECENT_DOSKEYS)
 	recent_doskeys_index = 0;
       XVECTOR (recent_doskeys)->contents[recent_doskeys_index++]
-	= make_number (sc);
+	= make_fixnum (sc);
       if (recent_doskeys_index == NUM_RECENT_DOSKEYS)
 	recent_doskeys_index = 0;
 
@@ -3416,7 +3416,7 @@ dos_rawgetc ()
 	      event.kind = HELP_EVENT;
 	      event.frame_or_window = selected_frame;
 	      event.arg = help_echo_object;
-	      event.x = make_number (help_echo_pos);
+	      event.x = make_fixnum (help_echo_pos);
 	      event.timestamp = event_timestamp ();
 	      event.code = 0;
 	      kbd_buffer_store_event (&event);
@@ -5299,7 +5299,7 @@ static int delete_exited_processes;
 
 syms_of_msdos ()
 {
-  recent_doskeys = Fmake_vector (make_number (NUM_RECENT_DOSKEYS), Qnil);
+  recent_doskeys = Fmake_vector (make_fixnum (NUM_RECENT_DOSKEYS), Qnil);
   staticpro (&recent_doskeys);
 #ifndef HAVE_X_WINDOWS
   help_echo = Qnil;
@@ -5332,7 +5332,7 @@ wide as that tab on the display.  (No effect on MS-DOS.)");
 
   DEFVAR_LISP ("dos-unsupported-char-glyph", &Vdos_unsupported_char_glyph,
    "*Glyph to display instead of chars not supported by current codepage.\n\
-\n\
+
 This variable is used only by MSDOS terminals.");
     Vdos_unsupported_char_glyph = '\177';
 #endif

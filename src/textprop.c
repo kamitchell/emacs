@@ -1,6 +1,5 @@
 /* Interface code for dealing with text properties.
-   Copyright (C) 1993, 1994, 1995, 1997, 1999, 2000, 2001
-   Free Software Foundation, Inc.
+   Copyright (C) 1993, 1994, 1995, 1997, 1999, 2000 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -525,7 +524,7 @@ interval_of (position, object)
     }
 
   if (!(beg <= position && position <= end))
-    args_out_of_range (make_number (position), make_number (position));
+    args_out_of_range (make_fixnum (position), make_fixnum (position));
   if (beg == end || NULL_INTERVAL_P (i))
     return NULL_INTERVAL;
     
@@ -671,9 +670,9 @@ overlays are considered only if they are associated with OBJECT.")
 DEFUN ("next-char-property-change", Fnext_char_property_change,
        Snext_char_property_change, 1, 2, 0,
   "Return the position of next text property or overlay change.\n\
-This scans characters forward from POSITION till it finds a change in\n\
-some text property, or the beginning or end of an overlay, and returns\n\
-the position of that.\n\
+This scans characters forward from POSITION in OBJECT till it finds\n\
+a change in some text property, or the beginning or end of an overlay,\n\
+and returns the position of that.\n\
 If none is found, the function returns (point-max).\n\
 \n\
 If the optional third argument LIMIT is non-nil, don't search\n\
@@ -696,9 +695,9 @@ past position LIMIT; return LIMIT if nothing is found before LIMIT.")
 DEFUN ("previous-char-property-change", Fprevious_char_property_change,
        Sprevious_char_property_change, 1, 2, 0,
   "Return the position of previous text property or overlay change.\n\
-Scans characters backward from POSITION till it finds a change in some\n\
-text property, or the beginning or end of an overlay, and returns the\n\
-position of that.\n\
+Scans characters backward from POSITION in OBJECT till it finds\n\
+a change in some text property, or the beginning or end of an overlay,\n\
+and returns the position of that.\n\
 If none is found, the function returns (point-max).\n\
 \n\
 If the optional third argument LIMIT is non-nil, don't search\n\
@@ -726,8 +725,8 @@ Scans characters forward from POSITION till it finds\n\
 a change in the PROP property, then returns the position of the change.\n\
 The optional third argument OBJECT is the string or buffer to scan.\n\
 The property values are compared with `eq'.\n\
-If the property is constant all the way to the end of OBJECT, return the\n\
-last valid position in OBJECT.\n\
+Return nil if the property is constant all the way to the end of OBJECT.\n\
+If the value is non-nil, it is a position greater than POSITION, never equal.\n\n\
 If the optional fourth argument LIMIT is non-nil, don't search\n\
 past position LIMIT; return LIMIT if nothing is found before LIMIT.")
   (position, prop, object, limit)
@@ -739,7 +738,7 @@ past position LIMIT; return LIMIT if nothing is found before LIMIT.")
       if (NILP (position))
 	{
 	  if (NILP (limit))
-	    position = make_number (XSTRING (object)->size);
+	    position = make_fixnum (XSTRING (object)->size);
 	  else
 	    position = limit;
 	}
@@ -792,8 +791,8 @@ Scans characters backward from POSITION till it finds\n\
 a change in the PROP property, then returns the position of the change.\n\
 The optional third argument OBJECT is the string or buffer to scan.\n\
 The property values are compared with `eq'.\n\
-If the property is constant all the way to the start of OBJECT, return the\n\
-first valid position in OBJECT.\n\
+Return nil if the property is constant all the way to the start of OBJECT.\n\
+If the value is non-nil, it is a position less than POSITION, never equal.\n\n\
 If the optional fourth argument LIMIT is non-nil, don't search\n\
 back past position LIMIT; return LIMIT if nothing is found before LIMIT.")
   (position, prop, object, limit)
@@ -805,7 +804,7 @@ back past position LIMIT; return LIMIT if nothing is found before LIMIT.")
       if (NILP (position))
 	{
 	  if (NILP (limit))
-	    position = make_number (XSTRING (object)->size);
+	    position = make_fixnum (XSTRING (object)->size);
 	  else
 	    position = limit;
 	}
@@ -833,7 +832,7 @@ back past position LIMIT; return LIMIT if nothing is found before LIMIT.")
       else
 	{
 	  Lisp_Object initial_value =
-	    Fget_char_property (make_number (XFASTINT (position) - 1),
+	    Fget_char_property (make_fixnum (XFASTINT (position) - 1),
 				prop, object);
       
 	  for (;;)
@@ -848,7 +847,7 @@ back past position LIMIT; return LIMIT if nothing is found before LIMIT.")
 	      else
 		{
 		  Lisp_Object value =
-		    Fget_char_property (make_number (XFASTINT (position) - 1),
+		    Fget_char_property (make_fixnum (XFASTINT (position) - 1),
 					prop, object);
 
 		  if (!EQ (value, initial_value))
@@ -993,7 +992,7 @@ past position LIMIT; return LIMIT if nothing is found before LIMIT.")
   if (! NILP (limit) && !(next->position < XFASTINT (limit)))
     return limit;
 
-  return make_number (next->position);
+  return make_fixnum (next->position);
 }
 
 DEFUN ("previous-property-change", Fprevious_property_change,
@@ -1036,7 +1035,7 @@ back past position LIMIT; return LIMIT if nothing is found until LIMIT.")
       && !(previous->position + LENGTH (previous) > XFASTINT (limit)))
     return limit;
 
-  return make_number (previous->position + LENGTH (previous));
+  return make_fixnum (previous->position + LENGTH (previous));
 }
 
 DEFUN ("previous-single-property-change", Fprevious_single_property_change,
@@ -1084,7 +1083,7 @@ back past position LIMIT; return LIMIT if nothing is found until LIMIT.")
       && !(previous->position + LENGTH (previous) > XFASTINT (limit)))
     return limit;
 
-  return make_number (previous->position + LENGTH (previous));
+  return make_fixnum (previous->position + LENGTH (previous));
 }
 
 /* Callers note, this can GC when OBJECT is a buffer (or nil).  */
@@ -1483,7 +1482,7 @@ containing the text.")
 	  pos = i->position;
 	  if (pos < XINT (start))
 	    pos = XINT (start);
-	  return make_number (pos);
+	  return make_fixnum (pos);
 	}
       i = next_interval (i);
     }
@@ -1519,7 +1518,7 @@ containing the text.")
 	{
 	  if (i->position > s)
 	    s = i->position;
-	  return make_number (s);
+	  return make_fixnum (s);
 	}
       i = next_interval (i);
     }
@@ -1596,8 +1595,8 @@ copy_text_properties (start, end, src, pos, dest, prop)
 	{
 	  /* Must defer modifications to the interval tree in case src
 	     and dest refer to the same string or buffer.  */
-	  stuff = Fcons (Fcons (make_number (p),
-				Fcons (make_number (p + len),
+	  stuff = Fcons (Fcons (make_fixnum (p),
+				Fcons (make_fixnum (p + len),
 				       Fcons (plist, Qnil))),
 			stuff);
 	}
@@ -1671,8 +1670,8 @@ text_property_list (object, start, end, prop)
 		}
 
 	  if (!NILP (plist))
-	    result = Fcons (Fcons (make_number (s),
-				   Fcons (make_number (s + len),
+	    result = Fcons (Fcons (make_fixnum (s),
+				   Fcons (make_fixnum (s + len),
 					  Fcons (plist, Qnil))),
 			    result);
 	  
@@ -1707,8 +1706,8 @@ add_text_properties_from_list (object, list, delta)
       Lisp_Object item, start, end, plist, tem;
       
       item = XCAR (list);
-      start = make_number (XINT (XCAR (item)) + XINT (delta));
-      end = make_number (XINT (XCAR (XCDR (item))) + XINT (delta));
+      start = make_fixnum (XINT (XCAR (item)) + XINT (delta));
+      end = make_fixnum (XINT (XCAR (XCDR (item))) + XINT (delta));
       plist = XCAR (XCDR (XCDR (item)));
       
       tem = Fadd_text_properties (start, end, plist, object);
@@ -1738,7 +1737,7 @@ extend_property_ranges (list, old_end, new_end)
       end = XCAR (XCDR (item));
 
       if (EQ (end, old_end))
-	XSETCAR (XCDR (item), new_end);
+	XCAR (XCDR (item)) = new_end;
     }
 }
 
@@ -1913,14 +1912,11 @@ verify_interval_modification (buf, start, end)
 	  if (! INTERVAL_WRITABLE_P (i))
 	    text_read_only ();
 
-	  if (!inhibit_modification_hooks)
+	  mod_hooks = textget (i->plist, Qmodification_hooks);
+	  if (! NILP (mod_hooks) && ! EQ (mod_hooks, prev_mod_hooks))
 	    {
-	      mod_hooks = textget (i->plist, Qmodification_hooks);
-	      if (! NILP (mod_hooks) && ! EQ (mod_hooks, prev_mod_hooks))
-		{
-		  hooks = Fcons (mod_hooks, hooks);
-		  prev_mod_hooks = mod_hooks;
-		}
+	      hooks = Fcons (mod_hooks, hooks);
+	      prev_mod_hooks = mod_hooks;
 	    }
 
 	  i = next_interval (i);
@@ -1928,18 +1924,15 @@ verify_interval_modification (buf, start, end)
       /* Keep going thru the interval containing the char before END.  */
       while (! NULL_INTERVAL_P (i) && i->position < end);
 
-      if (!inhibit_modification_hooks)
+      GCPRO1 (hooks);
+      hooks = Fnreverse (hooks);
+      while (! EQ (hooks, Qnil))
 	{
-	  GCPRO1 (hooks);
-	  hooks = Fnreverse (hooks);
-	  while (! EQ (hooks, Qnil))
-	    {
-	      call_mod_hooks (Fcar (hooks), make_number (start),
-			      make_number (end));
-	      hooks = Fcdr (hooks);
-	    }
-	  UNGCPRO;
+	  call_mod_hooks (Fcar (hooks), make_fixnum (start),
+			  make_fixnum (end));
+	  hooks = Fcdr (hooks);
 	}
+      UNGCPRO;
     }
 }
 
