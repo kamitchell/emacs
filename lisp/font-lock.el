@@ -2048,7 +2048,8 @@ This function could be MATCHER in a MATCH-ANCHORED `font-lock-keywords' item."
 	    ;; Move over any item value, etc., to the next item.
 	    (while (not (looking-at "[ \t\n]*\\(\\(,\\)\\|;\\|\\'\\)"))
 	      (goto-char (or (scan-sexps (point) 1) (point-max))))
-	    (goto-char (match-end 2)))
+	    (if (match-end 2)
+		(goto-char (match-end 2))))
 	(error t)))))
 
 ;; Lisp.
@@ -2206,7 +2207,7 @@ The value of this variable is used when Font Lock mode is turned on."
   :group 'font-lock-extra-types)
 
 (defcustom java-font-lock-extra-types
-  '("[A-Z\300-\326\330-\337]\\sw*[a-zA-Z]\\sw*")
+  '("[A-Z\300-\326\330-\337]\\sw*[a-z]\\sw*")
   "*List of extra types to fontify in Java mode.
 Each list item should be a regexp not containing word-delimiters.
 For example, a value of (\"[A-Z\300-\326\330-\337]\\\\sw*[a-z]\\\\sw*\") means capitalised
