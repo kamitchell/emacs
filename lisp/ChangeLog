@@ -1,11 +1,20 @@
+2001-10-04  Gerd Moellmann  <gerd@gnu.org>
+
+	This adds expansion of environment variables in the value
+	specified with M-x setenv.  Added to NEWS.
+
+	* env.el (substitute-env-vars): New function.
+	(setenv): Add parameter SUBSTITUTE-ENV-VARS.  If set, substitute
+	environment variables in VALUE.  Return VALUE.
+
 2001-10-03  Stefan Monnier  <monnier@cs.yale.edu>
 
 	* pcvs-util.el (cvs-prefix-define): Typo cons->concat.
 
-2001-10-03  Pavel Jan,Bm(Bk  <Pavel@Janik.cz>
+2001-10-02  Pavel Jan,Bm(Bk  <Pavel@Janik.cz>
 
 	* emulation/tpu-edt.el: Make messages match original TPU/edt
-	editor.  From riepel@Stanford.EDU (Rob Riepel).
+	editor. From riepel@Stanford.EDU (Rob Riepel).
 
 2001-10-03  Eli Zaretskii  <eliz@is.elta.co.il>
 
