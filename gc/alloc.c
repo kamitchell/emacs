@@ -17,7 +17,7 @@
 
 
 # include "private/gc_priv.h"
-#include <malloc.h>
+
 # include <stdio.h>
 # if !defined(MACOS) && !defined(MSWINCE)
 #   include <signal.h>
@@ -71,6 +71,13 @@ int GC_full_freq = 19;	   /* Every 20th collection is a full	*/
 
 GC_bool GC_need_full_gc = FALSE;
 			   /* Need full GC do to heap growth.	*/
+
+#ifdef THREADS
+  GC_bool GC_world_stopped = FALSE;
+# define IF_THREADS(x) x
+#else
+# define IF_THREADS(x)
+#endif
 
 word GC_used_heap_size_after_full = 0;
 
@@ -134,17 +141,6 @@ int GC_n_attempts = 0;		/* Number of attempts at finishing	*/
     return(0);
   }
 #endif /* !SMALL_CONFIG */
-
-#if 0
-void* callocx (size_t n, size_t size)
-{
-  void *val;
-  mallopt (M_MMAP_MAX, 0);
-  val = calloc (n, size);
-  mallopt (M_MMAP_MAX, 100000000);
-  return val;
-}
-#endif
 
 /* Return the minimum number of words that must be allocated between	*/
 /* collections to amortize the collection cost.				*/
@@ -308,9 +304,6 @@ void GC_maybe_gc()
 }
 
 
-void (*GC_collect_start_callback)GC_PROTO((void)) = NULL;
-void (*GC_collect_end_callback)GC_PROTO((void)) = NULL;
-
 /*
  * Stop the world garbage collection.  Assumes lock held, signals disabled.
  * If stop_func is not GC_never_stop_func, then abort if stop_func returns TRUE.
@@ -323,8 +316,6 @@ GC_stop_func stop_func;
         CLOCK_TYPE start_time, current_time;
 #   endif
     if (GC_dont_gc) return FALSE;
-    if (GC_collect_start_callback)
-      GC_collect_start_callback();
     if (GC_incremental && GC_collection_in_progress()) {
 #   ifdef CONDPRINT
       if (GC_print_stats) {
@@ -387,8 +378,6 @@ GC_stop_func stop_func;
                    MS_TIME_DIFF(current_time,start_time));
       }
 #   endif
-    if (GC_collect_end_callback)
-      GC_collect_end_callback();
     return(TRUE);
 }
 
@@ -488,6 +477,7 @@ GC_stop_func stop_func;
         GC_cond_register_dynamic_libraries();
 #   endif
     STOP_WORLD();
+    IF_THREADS(GC_world_stopped = TRUE);
 #   ifdef CONDPRINT
       if (GC_print_stats) {
 	GC_printf1("--> Marking for collection %lu ",
@@ -518,6 +508,7 @@ GC_stop_func stop_func;
 		      }
 #		    endif
 		    GC_deficit = i; /* Give the mutator a chance. */
+                    IF_THREADS(GC_world_stopped = FALSE);
 	            START_WORLD();
 	            return(FALSE);
 	    }
@@ -551,6 +542,7 @@ GC_stop_func stop_func;
             (*GC_check_heap)();
         }
     
+    IF_THREADS(GC_world_stopped = FALSE);
     START_WORLD();
 #   ifdef PRINTTIMES
 	GET_TIME(current_time);

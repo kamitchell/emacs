@@ -46,8 +46,6 @@ struct hash_chain_entry {
 unsigned GC_finalization_failures = 0;
 	/* Number of finalization requests that failed for lack of memory. */
 
-void (*GC_custom_finalize)(void);
-
 static struct disappearing_link {
     struct hash_chain_entry prolog;
 #   define dl_hidden_link prolog.hidden_key
@@ -667,8 +665,6 @@ void GC_finalize()
         }
       }
     }
-    if (GC_custom_finalize)
-      GC_custom_finalize();
 }
 
 #ifndef JAVA_FINALIZATION_NOT_NEEDED
@@ -768,7 +764,6 @@ int GC_invoke_finalizers()
     struct finalizable_object * curr_fo;
     int count = 0;
     word mem_freed_before;
-    GC_bool first_time = TRUE;
     DCL_LOCK_STATE;
     
     while (GC_finalize_now != 0) {
@@ -776,9 +771,8 @@ int GC_invoke_finalizers()
 	    DISABLE_SIGNALS();
 	    LOCK();
 #	endif
-	if (first_time) {
+	if (count == 0) {
 	    mem_freed_before = GC_mem_freed;
-	    first_time = FALSE;
 	}
     	curr_fo = GC_finalize_now;
 #	ifdef THREADS
@@ -801,7 +795,7 @@ int GC_invoke_finalizers()
     	    GC_free((GC_PTR)curr_fo);
 #	endif
     }
-    if (mem_freed_before != GC_mem_freed) {
+    if (count != 0 && mem_freed_before != GC_mem_freed) {
         LOCK();
 	GC_finalizer_mem_freed += (GC_mem_freed - mem_freed_before);
 	UNLOCK();

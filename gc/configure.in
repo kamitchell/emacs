@@ -17,7 +17,7 @@ dnl Process this file with autoconf to produce configure.
 # Initialization
 # ==============
 
-AC_INIT(gc,6.2alpha4,Hans.Boehm@hp.com) 
+AC_INIT(gc,6.2alpha6,Hans.Boehm@hp.com) 
     ## version must conform to [0-9]+[.][0-9]+(alpha[0-9]+)?
 AC_CONFIG_SRCDIR(gcj_mlc.c)
 AC_CANONICAL_TARGET 
@@ -34,7 +34,7 @@ AC_PROG_CXX
 
 AM_PROG_AS
 AC_CHECK_TOOL(AR, ar)
-AC_PROG_RANLIB
+AC_CHECK_TOOL(RANLIB, ranlib, :)  # :)
 
 AC_PROG_INSTALL
 
@@ -64,18 +64,8 @@ AC_ARG_ENABLE(parallel-mark,
 )
 
 AC_ARG_ENABLE(cplusplus,
-[  --enable-cplusplus		include C++ support in GC library and include directory],
+[  --enable-cplusplus		install C++ support],
 )
-
-AC_ARG_ENABLE(cppflags,
-[  --enable-cppflags		use these cpp flags for compilation.
-				An alternative to using CPPGLAGS for use in
-				sub-configures.],
-[CPPFLAGS=$enable_cppflags
- ac_env_CPPFLAGS_set=set
- ac_env_CPPFLAGS_value=$CPPFLAGS
- ac_cv_env_CPPFLAGS_set=set
- ac_cv_env_CPPFLAGS_value=$CPPFLAGS])
 
 INCLUDES=-I${srcdir}/include
 THREADLIBS=
@@ -97,6 +87,10 @@ case "$THREADS" in
 	;;
      *-*-linux*)
 	AC_DEFINE(GC_LINUX_THREADS)
+	AC_DEFINE(_REENTRANT)
+	;;
+     *-*-aix*)
+	AC_DEFINE(GC_AIX_THREADS)
 	AC_DEFINE(_REENTRANT)
 	;;
      *-*-hpux*)
@@ -126,7 +120,11 @@ case "$THREADS" in
 	AC_DEFINE(GC_WIN32_THREADS)
 	;;
      *-*-darwin*)
-	AC_DEFINE(GC_MACOSX_THREADS)
+	AC_DEFINE(GC_DARWIN_THREADS)
+	AC_DEFINE(THREAD_LOCAL_ALLOC)
+	if test "${enable_parallel_mark}" = yes; then
+	  AC_DEFINE(PARALLEL_MARK)
+	fi
 	;;
      *-*-osf*)
 	AC_DEFINE(GC_OSF1_THREADS)
@@ -169,7 +167,15 @@ AC_MSG_RESULT($THREADLIBS)
 esac
 AC_SUBST(THREADLIBS)
 
-# I'm not too familiar with autoconf, is this the best way to do this? -Brian
+case "$host" in 
+   powerpc-*-darwin*)
+      powerpc_darwin=true
+      ;;
+esac
+AM_CONDITIONAL(POWERPC_DARWIN,test x$powerpc_darwin = xtrue)
+
+# We never want libdl on darwin. It is a fake libdl that just ends up making
+# dyld calls anyway
 case "$host" in
   *-*-darwin*) ;;
   *) 
@@ -193,6 +199,7 @@ TARGET_ECOS="$with_ecos"
 )
 
 addobjs=
+addlibs=
 addincludes=
 addtests=
 CXXINCLUDES=
@@ -207,10 +214,11 @@ case "$TARGET_ECOS" in
 esac
 
 if test "${enable_cplusplus}" = yes; then
-      addobjs="$addobjs gc_cpp.lo"
       addincludes="$addincludes include/gc_cpp.h include/gc_allocator.h"
       addtests="$addtests test_cpp"
 fi
+
+AM_CONDITIONAL(CPLUSPLUS, test "${enable_cplusplus}" = yes)
 
 AC_SUBST(CXX)
 
@@ -286,9 +294,10 @@ fi
 addobjs="$addobjs $machdep"
 AC_SUBST(addobjs)
 AC_SUBST(addincludes)
+AC_SUBST(addlibs)
 AC_SUBST(addtests)
 
-AM_PROG_LIBTOOL
+AC_PROG_LIBTOOL
 
 #
 # Check for AViiON Machines running DGUX
@@ -424,10 +433,10 @@ fi
 
 AM_CONDITIONAL(USE_LIBDIR, test -z "$with_cross_host")
 
-AC_CONFIG_FILES(Makefile doc/Makefile include/Makefile)
-AC_CONFIG_COMMANDS(srcdir=${srcdir}
+AC_OUTPUT([Makefile doc/Makefile include/Makefile],,
+srcdir=${srcdir}
 host=${host}
 CONFIG_SHELL=${CONFIG_SHELL-/bin/sh}
 CC="${CC}"
-DEFS="$DEFS")
-AC_OUTPUT
+DEFS="$DEFS"
+)
