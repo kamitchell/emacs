@@ -486,9 +486,6 @@ case "${canonical}" in
   hppa1.1-hitachi-hiuxmpp* )
     machine=sr2k opsys=hiuxmpp
   ;;
-  hppa1.1-hitachi-hiuxwe2* )
-    machine=sr2k opsys=hiuxwe2
-  ;;
   ## Honeywell XPS100
   xps*-honeywell-sysv* )
     machine=xps100 opsys=usg5-2
@@ -1573,6 +1570,7 @@ dnl FIXME replace main with a function we actually want from this library.
 AC_CHECK_LIB(Xbsd, main, LD_SWITCH_X_SITE="$LD_SWITCH_X_SITE -lXbsd")
 
 AC_CHECK_LIB(pthreads, cma_open)
+AC_CHECK_LIB(gmp, mpz_init)
 
 AC_MSG_CHECKING(for XFree86 in /usr/X386)
 if test -d /usr/X386/include; then
@@ -2288,7 +2286,7 @@ echo creating lib-src/Makefile
   sed -e '/start of cpp stuff/q' \
       < Makefile.c > junk1.c
   sed -e '1,/start of cpp stuff/d'\
-      -e 's,/\*\*/#\(.*\)$,/* \1 */,' \
+      -e 's@/\*\*/#\(.*\)$@/* \1 */@' \
       < Makefile.c > junk.c
   $CPP $undefs -I. -I$top_srcdir/src $CPPFLAGS junk.c | \
       sed -e 's/^ /	/' -e '/^#/d' -e '/^[ 	]*$/d' > junk2.c
@@ -2304,7 +2302,7 @@ echo creating src/Makefile
   sed -e '/start of cpp stuff/q' \
       < Makefile.c > junk1.c
   sed -e '1,/start of cpp stuff/d'\
-      -e 's,/\*\*/#\(.*\)$,/* \1 */,' \
+      -e 's@/\*\*/#\(.*\)$@/* \1 */@' \
       < Makefile.c > junk.c
   $CPP $undefs -I. -I$top_srcdir/src $CPPFLAGS junk.c | \
       sed -e 's/^ /	/' -e '/^#/d' -e '/^[ 	]*$/d' > junk2.c

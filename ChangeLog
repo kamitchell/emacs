@@ -1,24 +1,6 @@
-2001-10-13  Eli Zaretskii  <eliz@is.elta.co.il>
+2001-10-16  Gerd Moellmann  <gerd@gnu.org>
 
-	* README: Bump Emacs version to 21.1.50.
-
-2001-10-05  Gerd Moellmann  <gerd@gnu.org>
-
-	* Branch for 21.1.
-	
-2001-09-05  Gerd Moellmann  <gerd@gnu.org>
-
-	* configure.in: Avoid `$@' which is handled specially in
-	Autoconf 2.52.  From "Adam J. Richter" <adam@yggdrasil.com>.
-	
-2001-09-01  Eli Zaretskii  <eliz@is.elta.co.il>
-
-	* make-dist (nt): Add subdirs.el to the list of distributed files.
-
-2001-08-14  Eli Zaretskii  <eliz@is.elta.co.il>
-
-	* configure.in (machine): Add an entry for
-	hppa1.1-hitachi-hiuxwe2*.
+	* configure.in: Check for libgmp.
 
 2001-05-28  Gerd Moellmann  <gerd@gnu.org>
 
@@ -4987,8 +4969,3 @@
 ;; Local Variables:
 ;; coding: iso-2022-7bit-unix
 ;; End:
-
-    Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2001
-	Free Software Foundation, Inc.
-  Copying and distribution of this file, with or without modification,
-  are permitted provided the copyright notice and this notice are preserved.
