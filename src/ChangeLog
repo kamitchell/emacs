@@ -1,93 +1,9 @@
-2004-02-18  Jason Rumney  <jasonr@gnu.org>
+2004-05-02  Thien-Thi Nguyen  <ttn@gnu.org>
 
-	* unexw32.c (_start): Remove _fmode initialization.
-
-	* emacs.c (main) [WINDOWSNT]: Move it here.
-
-2004-01-23  Kenichi Handa  <handa@m17n.org>
-
-	* fns.c (Fmd5): If OBJECT is a buffer different from the current
-	one, set buffer to OBJECT temporarily.
-
-2003-08-27  Kenichi Handa  <handa@m17n.org>
-
-	* coding.c (detect_coding_iso2022): While checking a byte sequence
-	for CODING_CATEGORY_MASK_ISO_8_2, if we read one extra byte, check
-	it in the normal loop.
-
-2003-09-17  Dave Love  <fx@gnu.org>
-
-	* unexalpha.c: Don't include varargs.h.
-
-2003-07-12  Paul Eggert  <eggert@twinsun.com>
-
-	* unexelf.c (unexec): Consider a section to precede the .bss
-	section if its addresses overlap that of .bss.
-
-2003-07-07  Nozomu Ando  <nand@mac.com>  (tiny change)
-
-	* buffer.c (Fkill_buffer): Clear charpos cache if necessary.
-
-2003-06-10  Andreas Schwab  <schwab@suse.de>
-
-	* window.c (window_scroll_pixel_based): Move outside a
-	multi-glyph character before setting new window start.
-
-	* xdisp.c (in_display_vector_p): New function.
-	* dispextern.h (in_display_vector_p): Declare.
-
-2003-06-10  Richard M. Stallman  <rms@gnu.org>
-
-	* window.c (window_scroll_pixel_based): Fix check for reaching BEGV.
-	Don't try to make last line fully visible if it is past end of window.
-
-	* window.c (window_scroll_pixel_based): Don't call Fbolp;
-	instead, see if the new start pos is at beginning of line.
-
-	* window.c (window_scroll_pixel_based): Exit the move_it_by_lines
-	loop whenever it stops making progress.
-
-2003-06-04  Kenichi Handa  <handa@m17n.org>
-
-	* coding.c (encoding_buffer_size): If coding->type is
-	coding_type_ccl, double magnification on CRLF encoding.
-
-2003-06-02  Kenichi Handa  <handa@etlken2>
-
-	* buffer.c (Fset_buffer_multibyte): Fix previous change.
-
-2003-05-31  Kenichi Handa  <handa@m17n.org>
-
-	* buffer.c (Fset_buffer_multibyte): Correctly recover a narrowed
-	region when a buffer is changed to unibyte.
-
-2003-05-30  Kenichi Handa  <handa@m17n.org>
-
-	* coding.c (ccl_coding_driver): Set ccl->eight_bit_control
-	properly before calling ccl_driver.
-
-	* ccl.h (struct ccl_program) <eight_bit_control>: Comment fixed.
-
-	* ccl.c (CCL_WRITE_CHAR): Increment extra_bytes only when it is
-	nonzero.
-	(ccl_driver): Initialize extra_bytes to ccl->eight_bit_control.
-	(setup_ccl_program): Initialize ccl->eight_bit_control to zero.
-
-2003-05-14  Stefan Monnier  <monnier@cs.yale.edu>
-
-	* keyboard.c (make_lispy_event): Apply modifiers to multibyte chars.
-
-2003-05-03  Dave Love  <fx@gnu.org>
-
-	* config.in: Add HAVE_LIBLOCKFILE.
-
-	* s/gnu-linux.h (MAIL_USE_FLOCK): Don't define if we should use
-	maillock.
-
-2003-04-22  Francesco Potort,Al(B  <pot@gnu.org>
-
-	* process.c (process_send_signal) [HPUX11]: Make C-c C-c work in
-	shell mode.
+	* alloc.c (PURE_BEF_ATTRS, PURE_AFT_ATTRS): New macros, by default empty.
+	(pure): Use new macros in decl.
+	(PURE_AFT_ATTRS) [VMS, __GNUC__]: Define.
+	(PURE_BEF_ATTRS) [VMS, not __GNUC__]: Define.
 
 2003-03-18  Francesco Potort,Al(B  <pot@gnu.org>
 
@@ -113,8 +29,8 @@
 2003-02-23  Jan Dj,Ad(Brv  <jan.h.d@swipnet.se>
 
 	* process.c (emacs_get_tty_pgrp): New function.
-	(Fprocess_running_child_p, process_send_signal):
-	Call emacs_get_tty_pgrp instead of ioctl.
+	(Fprocess_running_child_p, process_send_signal): Call
+        emacs_get_tty_pgrp instead of ioctl.
 	(process_send_signal): Call EMACS_KILLPG if ioctl TIOCSIGSEND fails.
 
 2003-02-19  Juanma Barranquero  <lektu@terra.es>
@@ -13859,6 +13775,6 @@ See ChangeLog.8 for earlier changes.
 ;; coding: iso-2022-7bit
 ;; End:
 
-    Copyright (C) 2000, 2001, 2002, 2003 Free Software Foundation, Inc.
+    Copyright (C) 2001 Free Software Foundation, Inc.
   Copying and distribution of this file, with or without modification,
   are permitted provided the copyright notice and this notice are preserved.
