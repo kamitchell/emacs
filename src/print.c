@@ -311,7 +311,7 @@ printchar (ch, fun)
 #endif /* MAX_PRINT_CHARS */
 
   if (!NILP (fun) && !EQ (fun, Qt))
-    call1 (fun, make_number (ch));
+    call1 (fun, make_fixnum (ch));
   else
     {
       unsigned char str[MAX_MULTIBYTE_LENGTH];
@@ -401,7 +401,7 @@ strout (ptr, size, size_byte, printcharfun, multibyte)
       if (size == size_byte)
 	{
 	  for (i = 0; i < size; ++i)
-	    insert_char ((unsigned char )*ptr++);
+	    insert_char (*ptr++);
 	}
       else
 	{
@@ -660,16 +660,15 @@ buffer and calling the hook.  It gets one argument, the buffer to display.")
 
   GCPRO1(args);
   name = Feval (Fcar (args));
+  UNGCPRO;
+
   CHECK_STRING (name, 0);
   temp_output_buffer_setup (XSTRING (name)->data);
   buf = Vstandard_output;
-  UNGCPRO;
 
-  val = Fprogn (XCDR (args));
+  val = Fprogn (Fcdr (args));
 
-  GCPRO1 (val);
   temp_output_buffer_show (buf);
-  UNGCPRO;
 
   return unbind_to (count, val);
 }
@@ -1198,8 +1197,7 @@ print_preprocess (obj)
   if (STRINGP (obj) || CONSP (obj) || VECTORP (obj)
       || COMPILEDP (obj) || CHAR_TABLE_P (obj)
       || (! NILP (Vprint_gensym)
-	  && SYMBOLP (obj)
-	  && !SYMBOL_INTERNED_P (obj)))
+	  && SYMBOLP (obj) && NILP (XSYMBOL (obj)->obarray)))
     {
       /* In case print-circle is nil and print-gensym is t,
 	 add OBJ to Vprint_number_table only when OBJ is a symbol.  */
@@ -1217,14 +1215,14 @@ print_preprocess (obj)
 	  if (print_number_index == 0)
 	    {
 	      /* Initialize the table.  */
-	      Vprint_number_table = Fmake_vector (make_number (40), Qnil);
+	      Vprint_number_table = Fmake_vector (make_fixnum (40), Qnil);
 	    }
 	  else if (XVECTOR (Vprint_number_table)->size == print_number_index * 2)
 	    {
 	      /* Reallocate the table.  */
 	      int i = print_number_index * 4;
 	      Lisp_Object old_table = Vprint_number_table;
-	      Vprint_number_table = Fmake_vector (make_number (i), Qnil);
+	      Vprint_number_table = Fmake_vector (make_fixnum (i), Qnil);
 	      for (i = 0; i < print_number_index; i++)
 		{
 		  PRINT_NUMBER_OBJECT (Vprint_number_table, i)
@@ -1237,9 +1235,8 @@ print_preprocess (obj)
 	  /* If Vprint_continuous_numbering is non-nil and OBJ is a gensym,
 	     always print the gensym with a number.  This is a special for
 	     the lisp function byte-compile-output-docform.  */
-	  if (!NILP (Vprint_continuous_numbering)
-	      && SYMBOLP (obj)
-	      && !SYMBOL_INTERNED_P (obj))
+	  if (! NILP (Vprint_continuous_numbering) && SYMBOLP (obj)
+	      && NILP (XSYMBOL (obj)->obarray))
 	    PRINT_NUMBER_STATUS (Vprint_number_table, print_number_index) = Qt;
 	  print_number_index++;
 	}
@@ -1248,8 +1245,8 @@ print_preprocess (obj)
 	{
 	case Lisp_String:
 	  /* A string may have text properties, which can be circular.  */
-	  traverse_intervals_noorder (XSTRING (obj)->intervals,
-				      print_preprocess_string, Qnil);
+	  traverse_intervals (XSTRING (obj)->intervals, 0, 0,
+			      print_preprocess_string, Qnil);
 	  break;
 
 	case Lisp_Cons:
@@ -1291,8 +1288,7 @@ print_object (obj, printcharfun, escapeflag)
   if (STRINGP (obj) || CONSP (obj) || VECTORP (obj)
       || COMPILEDP (obj) || CHAR_TABLE_P (obj)
       || (! NILP (Vprint_gensym)
-	  && SYMBOLP (obj)
-	  && !SYMBOL_INTERNED_P (obj)))
+	  && SYMBOLP (obj) && NILP (XSYMBOL (obj)->obarray)))
     {
       if (NILP (Vprint_circle) && NILP (Vprint_gensym))
 	{
@@ -1358,6 +1354,42 @@ print_object (obj, printcharfun, escapeflag)
 	abort ();
       strout (buf, -1, -1, printcharfun, 0);
       break;
+
+#ifdef HAVE_LIBGMP
+    case Lisp_Bignum:
+      {
+	char *s;
+	
+	switch (XBIGNUMTYPE (obj))
+	  {
+	  case BIG_INTEGER:
+	    s = mpz_get_str (NULL, 10, XBIGNUM (obj)->u.i);
+	    strout (s, -1, -1, printcharfun, 0);
+	    xfree (s);
+	    break;
+	    
+	  case BIG_FLOAT:
+	    s = mpf_get_str (NULL, NULL, 10, 0, XBIGNUM (obj)->u.f);
+	    strout (s, -1, -1, printcharfun, 0);
+	    xfree (s);
+	    break;
+
+	  case BIG_RATIONAL:
+	    s = mpz_get_str (NULL, 10, mpq_numref (XBIGNUM (obj)->u.r));
+	    strout (s, -1, -1, printcharfun, 0);
+	    xfree (s);
+	    strout ("/", -1, -1, printcharfun, 0);
+	    s = mpz_get_str (NULL, 10, mpq_denref (XBIGNUM (obj)->u.r));
+	    strout (s, -1, -1, printcharfun, 0);
+	    xfree (s);
+	    break;
+	    
+	  default:
+	    abort ();
+	  }
+      }
+      break;
+#endif
 
     case Lisp_Float:
       {
@@ -1468,7 +1500,7 @@ print_object (obj, printcharfun, escapeflag)
 	  if (!NULL_INTERVAL_P (XSTRING (obj)->intervals))
 	    {
 	      traverse_intervals (XSTRING (obj)->intervals,
-				  0, print_interval, printcharfun);
+				  0, 0, print_interval, printcharfun);
 	      PRINTCHAR (')');
 	    }
 
@@ -1509,7 +1541,7 @@ print_object (obj, printcharfun, escapeflag)
 	else
 	  confusing = 0;
 
-	if (! NILP (Vprint_gensym) && !SYMBOL_INTERNED_P (obj))
+	if (! NILP (Vprint_gensym) && NILP (XSYMBOL (obj)->obarray))
 	  {
 	    PRINTCHAR ('#');
 	    PRINTCHAR (':');
@@ -1540,7 +1572,7 @@ print_object (obj, printcharfun, escapeflag)
 
     case Lisp_Cons:
       /* If deeper than spec'd depth, print placeholder.  */
-      if (INTEGERP (Vprint_level)
+      if (FIXNUMP (Vprint_level)
 	  && print_depth > XINT (Vprint_level))
 	strout ("...", -1, -1, printcharfun, 0);
       else if (print_quoted && CONSP (XCDR (obj)) && NILP (XCDR (XCDR (obj)))
@@ -1962,9 +1994,9 @@ print_interval (interval, printcharfun)
      Lisp_Object printcharfun;
 {
   PRINTCHAR (' ');
-  print_object (make_number (interval->position), printcharfun, 1);
+  print_object (make_fixnum (interval->position), printcharfun, 1);
   PRINTCHAR (' ');
-  print_object (make_number (interval->position + LENGTH (interval)),
+  print_object (make_fixnum (interval->position + LENGTH (interval)),
 	 printcharfun, 1);
   PRINTCHAR (' ');
   print_object (interval->plist, printcharfun, 1);
