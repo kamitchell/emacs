@@ -24,13 +24,17 @@ Boston, MA 02111-1307, USA.  */
 
 #include <config.h>
 
+#ifdef HAVE_X_WINDOWS
+
 /* On 4.3 these lose if they come after xterm.h.  */
 /* Putting these at the beginning seems to be standard for other .c files.  */
 #include <signal.h>
 
 #include <stdio.h>
 
-#ifdef HAVE_X_WINDOWS
+#ifdef BOEHM_GC
+#include <gc.h>
+#endif
 
 #include "lisp.h"
 #include "blockinput.h"
@@ -296,7 +300,7 @@ Lisp_Object Vx_keysym_table;
 static Lisp_Object Qalt, Qhyper, Qmeta, Qsuper, Qmodifier_value;
 
 static Lisp_Object Qvendor_specific_keysyms;
-static Lisp_Object Qlatin_1;
+static Lisp_Object Qlatin_1, Qutf_8;
 
 extern XrmDatabase x_load_resources P_ ((Display *, char *, char *, char *));
 
@@ -10240,7 +10244,7 @@ x_term_init (display_name, xrm_option, resource_name)
       dpyinfo->kboard = share->kboard;
     else
       {
-	dpyinfo->kboard = (KBOARD *) xmalloc (sizeof (KBOARD));
+	dpyinfo->kboard = (KBOARD *) XGC_MALLOC (sizeof (KBOARD));
 	init_kboard (dpyinfo->kboard);
 	if (!EQ (XSYMBOL (Qvendor_specific_keysyms)->function, Qunbound))
 	  {
