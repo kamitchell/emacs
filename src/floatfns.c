@@ -122,9 +122,7 @@ extern int errno;
 #define sinh(x) ((exp(x)-exp(-x))*0.5)
 #endif /* VMS */
 
-#ifdef FLOAT_CATCH_SIGILL
 static SIGTYPE float_error ();
-#endif
 
 /* Nonzero while executing in floating point.
    This tells float_error what to do.  */
@@ -185,7 +183,8 @@ static char *float_error_fn_name;
 #define FLOAT_TO_INT(x, i, name, num)					\
   do									\
     {									\
-      if (FIXNUM_OVERFLOW_P (x))					\
+      if ((x) >= (((EMACS_INT) 1) << (VALBITS-1)) ||			\
+	  (x) <= - (((EMACS_INT) 1) << (VALBITS-1)) - 1)		\
 	range_error (name, num);					\
       XSETINT (i,  (EMACS_INT)(x));					\
     }									\
@@ -193,7 +192,8 @@ static char *float_error_fn_name;
 #define FLOAT_TO_INT2(x, i, name, num1, num2)				\
   do									\
     {									\
-      if (FIXNUM_OVERFLOW_P (x))					\
+      if ((x) >= (((EMACS_INT) 1) << (VALBITS-1)) ||			\
+	  (x) <= - (((EMACS_INT) 1) << (VALBITS-1)) - 1)		\
 	range_error2 (name, num1, num2);				\
       XSETINT (i,  (EMACS_INT)(x));					\
     }									\
@@ -218,12 +218,25 @@ double
 extract_float (num)
      Lisp_Object num;
 {
-  CHECK_NUMBER_OR_FLOAT (num, 0);
+  double d;
 
   if (FLOATP (num))
-    return XFLOAT_DATA (num);
-  return (double) XINT (num);
+    d = XFLOAT_DATA (num);
+  else if (FIXNUMP (num))
+    d = (double) XINT (num);
+#ifdef HAVE_LIBGMP
+  else if (BIGINTP (num))
+    d = mpz_get_d (XBIGNUM (num)->u.i);
+#endif
+  else
+    {
+      wrong_type_argument (Qnumberp, num);
+      d = 0;
+    }
+  
+  return d;
 }
+
 
 /* Trig functions.  */
 
@@ -447,8 +460,8 @@ DEFUN ("expt", Fexpt, Sexpt, 2, 2, 0,
 
   CHECK_NUMBER_OR_FLOAT (arg1, 0);
   CHECK_NUMBER_OR_FLOAT (arg2, 0);
-  if (INTEGERP (arg1)     /* common lisp spec */
-      && INTEGERP (arg2)) /* don't promote, if both are ints */
+  if (FIXNUMP (arg1)     /* common lisp spec */
+      && FIXNUMP (arg2)) /* don't promote, if both are ints */
     {				/* this can be improved by pre-calculating */
       EMACS_INT acc, x, y;	/* some binary powers of x then accumulating */
       Lisp_Object val;
@@ -646,13 +659,24 @@ DEFUN ("abs", Fabs, Sabs, 1, 1, 0,
   (arg)
      register Lisp_Object arg;
 {
+#ifdef HAVE_LIBGMP
+  if (FLOATP (arg))
+    IN_FLOAT (arg = make_float (fabs (XFLOAT_DATA (arg))), "abs", arg);
+  else if (FIXNUMP (arg) && XINT (arg) < 0)
+    XSETINT (arg, - XINT (arg));
+  else if (BIGINTP (arg) && mpz_sgn (XBIGNUM (arg)->u.i) < 0)
+    {
+      arg = make_bigint (XBIGNUM (arg)->u.i);
+      mpz_neg (XBIGNUM (arg)->u.i, XBIGNUM (arg)->u.i);
+    }
+#else
   CHECK_NUMBER_OR_FLOAT (arg, 0);
 
   if (FLOATP (arg))
     IN_FLOAT (arg = make_float (fabs (XFLOAT_DATA (arg))), "abs", arg);
   else if (XINT (arg) < 0)
     XSETINT (arg, - XINT (arg));
-
+#endif
   return arg;
 }
 
@@ -661,12 +685,20 @@ DEFUN ("float", Ffloat, Sfloat, 1, 1, 0,
   (arg)
      register Lisp_Object arg;
 {
+#ifdef HAVE_LIBGMP
+  if (FIXNUMP (arg) || BIGINTP (arg))
+    arg = make_float (extract_float (arg));
+  else if (!FLOATP (arg))
+    wrong_type_argument (Qnumberp, arg);
+  return arg;
+#else
   CHECK_NUMBER_OR_FLOAT (arg, 0);
 
-  if (INTEGERP (arg))
+  if (FIXNUMP (arg))
     return make_float ((double) XINT (arg));
   else				/* give 'em the same float back */
     return arg;
+#endif
 }
 
 DEFUN ("logb", Flogb, Slogb, 1, 1, 0,
