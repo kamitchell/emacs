@@ -4110,7 +4110,7 @@ detect_coding (coding, src, src_bytes)
   if (! mask)
     idx = CODING_CATEGORY_IDX_RAW_TEXT;
 
-  val = SYMBOL_VALUE (XVECTOR (Vcoding_category_table)->contents[idx]);
+  val = XSYMBOL (XVECTOR (Vcoding_category_table)->contents[idx])->value;
 
   if (coding->eol_type != CODING_EOL_UNDECIDED)
     {
@@ -6881,7 +6881,7 @@ call this function")
     {
       Lisp_Object val;
 
-      val = SYMBOL_VALUE (XVECTOR (Vcoding_category_table)->contents[i]);
+      val = XSYMBOL (XVECTOR (Vcoding_category_table)->contents[i])->value;
       if (!NILP (val))
 	{
 	  if (! coding_system_table[i])
@@ -7263,7 +7263,8 @@ See also the function `find-operation-coding-system'.");
   Vnetwork_coding_system_alist = Qnil;
 
   DEFVAR_LISP ("locale-coding-system", &Vlocale_coding_system,
-    "Coding system to use with system messages.");
+    "Coding system to use with system messages.  Also used for decoding\n\
+keyboard input on X Window system.");
   Vlocale_coding_system = Qnil;
 
   /* The eol mnemonics are reset in startup.el system-dependently.  */
