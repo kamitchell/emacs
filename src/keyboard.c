@@ -4688,35 +4688,12 @@ make_lispy_event (event)
 				     / sizeof (iso_lispy_function_keys[0])));
       else
 #endif
-
-#ifdef HAVE_X_WINDOWS
-      if (event->code - FUNCTION_KEY_OFFSET < 0
-	  || (event->code - FUNCTION_KEY_OFFSET
-	      >= sizeof lispy_function_keys / sizeof *lispy_function_keys))
-	{
-	  /* EVENT->code is an unknown keysym, for example someone
-	     assigned `ccaron' to a key in a locale where
-	     XmbLookupString doesn't return a translation for it.  */
-	  char *name;
-	  Lisp_Object symbol;
-	  
-	  BLOCK_INPUT;
-	  /* This returns a pointer to a static area.  Don't free it.  */
-	  name = XKeysymToString (event->code);
-	  symbol = name ? intern (name) : Qnil;
-	  UNBLOCK_INPUT;
-	  
-	  if (!NILP (symbol))
-	    return apply_modifiers (event->modifiers, symbol);
-	}
-#endif /* HAVE_X_WINDOWS */
-
-      return modify_event_symbol (event->code - FUNCTION_KEY_OFFSET,
-				  event->modifiers,
-				  Qfunction_key, Qnil,
-				  lispy_function_keys, &func_key_syms,
-				  (sizeof (lispy_function_keys)
-				   / sizeof (lispy_function_keys[0])));
+	return modify_event_symbol (event->code - FUNCTION_KEY_OFFSET,
+				    event->modifiers,
+				    Qfunction_key, Qnil,
+				    lispy_function_keys, &func_key_syms,
+				    (sizeof (lispy_function_keys)
+				     / sizeof (lispy_function_keys[0])));
 
 #ifdef HAVE_MOUSE
       /* A mouse click.  Figure out where it is, decide whether it's
@@ -9593,7 +9570,7 @@ That is not right.\n\
 \n\
 Calling this function directs the translated event to replace\n\
 the original event, so that only one version of the event actually\n\
-appears in the echo area and in the value of `this-command-keys.'.")
+appears in the echo area and in the value of `this-command-keys'.")
   ()
 {
   before_command_restore_flag = 1;
@@ -10740,7 +10717,7 @@ This is measured in microseconds.");
     "Normal hook run when clearing the echo area.");
 #endif
   Qecho_area_clear_hook = intern ("echo-area-clear-hook");
-  SET_SYMBOL_VALUE (Qecho_area_clear_hook, Qnil);
+  XSYMBOL (Qecho_area_clear_hook)->value = Qnil;
 
   DEFVAR_LISP ("lucid-menu-bar-dirty-flag", &Vlucid_menu_bar_dirty_flag,
     "t means menu bar, specified Lucid style, needs to be recomputed.");
@@ -10802,11 +10779,11 @@ If the value is non-nil and not a number, we wait 2 seconds.");
   Vsuggest_key_bindings = Qt;
 
   DEFVAR_LISP ("timer-list", &Vtimer_list,
-    "List of active absolute time timers in order of increasing time");
+    "List of active absolute time timers in order of increasing time.");
   Vtimer_list = Qnil;
 
   DEFVAR_LISP ("timer-idle-list", &Vtimer_idle_list,
-    "List of active idle-time timers in order of increasing time");
+    "List of active idle-time timers in order of increasing time.");
   Vtimer_idle_list = Qnil;
 
   DEFVAR_LISP ("input-method-function", &Vinput_method_function,
@@ -10851,7 +10828,7 @@ the boundary of the region.  But, several special commands sets this\n\
 variable to non-nil, then we suppress the point adjustment.\n\
 \n\
 This variable is set to nil before reading a command, and is checked\n\
-just after executing the command");
+just after executing the command.");
   Vdisable_point_adjustment = Qnil;
 
   DEFVAR_LISP ("global-disable-point-adjustment",
