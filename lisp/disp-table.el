@@ -123,7 +123,7 @@ Valid symbols are `truncation', `wrap', `escape', `control',
 (defun standard-display-default (l h)
   "Display characters in the range L to H using the default notation."
   (while (<= l h)
-    (if (and (>= l ?\ ) (char-valid-p l))
+    (if (and (>= l ?\ ) (characterp l))
 	(aset standard-display-table l nil))
     (setq l (1+ l))))
 
@@ -227,5 +227,4 @@ for users who call this function in `.emacs'."
 
 (provide 'disp-table)
 
-;;; arch-tag: ffe4c28c-960c-47aa-b8a8-ae89d371ffc7
 ;;; disp-table.el ends here
