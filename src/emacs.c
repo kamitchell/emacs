@@ -40,10 +40,6 @@ Boston, MA 02111-1307, USA.  */
 #include <sys/ioctl.h>
 #endif
 
-#ifdef WINDOWSNT
-#include <fcntl.h>
-#endif
-
 #include "lisp.h"
 #include "commands.h"
 #include "intervals.h"
@@ -116,7 +112,7 @@ Lisp_Object Vkill_emacs_hook;
 Lisp_Object Vsignal_USR1_hook;
 #ifdef SIGUSR2
 Lisp_Object Vsignal_USR2_hook;
-#endif 
+#endif
 #endif
 
 /* Search path separator.  */
@@ -797,7 +793,7 @@ main (argc, argv, envp)
   /* If -map specified, map the data file in */
   {
     char *file;
-    if (argmatch (argv, argc, "-map", "--map-data", 3, &mapin_file, &skip_args))
+    if (argmatch (argv, argc, "-map", "--map-data", 3, &file, &skip_args))
       mapin_data (file);
   }
 
@@ -878,13 +874,11 @@ main (argc, argv, envp)
   uninterrupt_malloc ();
 #endif	/* not SYSTEM_MALLOC */
 
-#if defined (MSDOS) || defined (WINDOWSNT)
+#ifdef MSDOS
   /* We do all file input/output as binary files.  When we need to translate
      newlines, we do that manually.  */
   _fmode = O_BINARY;
-#endif
 
-#ifdef MSDOS
 #if __DJGPP__ >= 2
   if (!isatty (fileno (stdin)))
     setmode (fileno (stdin), O_BINARY);
@@ -1106,7 +1100,7 @@ main (argc, argv, envp)
       init_buffer_once ();	/* Create buffer table and some buffers */
       init_minibuf_once ();	/* Create list of minibuffers */
 				/* Must precede init_window_once */
-      
+
       /* Call syms_of_xfaces before init_window_once because that
 	 function creates Vterminal_frame.  Termcap frames now use
 	 faces, and the face implementation uses some symbols as
@@ -1134,7 +1128,7 @@ main (argc, argv, envp)
       syms_of_data ();
       syms_of_search ();
       syms_of_frame ();
-      
+
       x_term_init ();
       init_keyboard ();
 #endif
@@ -1521,7 +1515,7 @@ main (argc, argv, envp)
 #ifdef PROFILING
   if (initialized)
     {
-      extern void _mcleanup ();       
+      extern void _mcleanup ();
       extern char etext;
       extern void safe_bcopy ();
       extern void dump_opcode_frequencies ();
@@ -1764,7 +1758,7 @@ sort_args (argc, argv)
 	  if (options[from] > 0)
 	    from += options[from];
 	}
-	    
+
       if (best < 0)
 	abort ();
 
