@@ -1,5 +1,5 @@
 /* Storage allocation and gc for GNU Emacs Lisp interpreter.
-   Copyright (C) 1985, 86, 88, 93, 94, 95, 97, 98, 1999, 2000, 2001
+   Copyright (C) 1985, 86, 88, 93, 94, 95, 97, 98, 1999, 2000, 2001, 2003
       Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
@@ -191,30 +191,29 @@ Lisp_Object Vpurify_flag;
 EMACS_INT pure[PURESIZE / sizeof (EMACS_INT)] = {0,};
 #define PUREBEG (char *) pure
 
-#else /* HAVE_SHM */
+#else /* not HAVE_SHM */
 
 #define pure PURE_SEG_BITS   /* Use shared memory segment */
 #define PUREBEG (char *)PURE_SEG_BITS
 
-#endif /* HAVE_SHM */
+/* This variable is used only by the XPNTR macro when HAVE_SHM is
+   defined.  If we used the PURESIZE macro directly there, that would
+   make most of Emacs dependent on puresize.h, which we don't want -
+   you should be able to change that without too much recompilation.
+   So map_in_data initializes pure_size, and the dependencies work
+   out.  */
 
-/* Pointer to the pure area, and its size.  */
+EMACS_INT pure_size;
 
-static char *purebeg;
-static size_t pure_size;
-
-/* Number of bytes of pure storage used before pure storage overflowed.
-   If this is non-zero, this implies that an overflow occurred.  */
-
-static size_t pure_bytes_used_before_overflow;
+#endif /* not HAVE_SHM */
 
 /* Value is non-zero if P points into pure space.  */
 
 #define PURE_POINTER_P(P)					\
      (((PNTR_COMPARISON_TYPE) (P)				\
-       < (PNTR_COMPARISON_TYPE) ((char *) purebeg + pure_size))	\
+       < (PNTR_COMPARISON_TYPE) ((char *) pure + PURESIZE))	\
       && ((PNTR_COMPARISON_TYPE) (P)				\
-	  >= (PNTR_COMPARISON_TYPE) purebeg))
+	  >= (PNTR_COMPARISON_TYPE) pure))
 
 /* Index in pure at which next pure object will be allocated.. */
 
@@ -246,10 +245,6 @@ int stack_copy_size;
 int ignore_warnings;
 
 Lisp_Object Qgc_cons_threshold, Qchar_table_extra_slots;
-
-/* Hook run after GC has finished.  */
-
-Lisp_Object Vpost_gc_hook, Qpost_gc_hook;
 
 static void mark_buffer P_ ((Lisp_Object));
 static void mark_kboards P_ ((void));
@@ -2546,13 +2541,11 @@ Its value and function definition are void, and its property list is nil.")
   
   p = XSYMBOL (val);
   p->name = XSTRING (name);
+  p->obarray = Qnil;
   p->plist = Qnil;
   p->value = Qunbound;
   p->function = Qunbound;
-  p->next = NULL;
-  p->interned = SYMBOL_UNINTERNED;
-  p->constant = 0;
-  p->indirect_variable = 0;
+  p->next = 0;
   consing_since_gc += sizeof (struct Lisp_Symbol);
   symbols_consed++;
   return val;
@@ -3798,7 +3791,7 @@ pure_alloc (size, type)
 {
   size_t nbytes;
   POINTER_TYPE *result;
-  char *beg = purebeg;
+  char *beg = PUREBEG;
 
   /* Give Lisp_Floats an extra alignment.  */
   if (type == Lisp_Float)
@@ -3809,33 +3802,21 @@ pure_alloc (size, type)
 #else
       alignment = sizeof (struct Lisp_Float);
 #endif
-      pure_bytes_used = ALIGN (pure_bytes_used, alignment);
+      /* Make sure beg + pure_bytes_used is correctly aligned for a
+	 Lisp_Float, which might need stricter alignment than
+	 EMACS_INT.  */
+      pure_bytes_used
+	= (ALIGN ((EMACS_UINT) (beg + pure_bytes_used), alignment)
+	   - (EMACS_UINT) beg);
     }
     
   nbytes = ALIGN (size, sizeof (EMACS_INT));
-  
-  if (pure_bytes_used + nbytes > pure_size)
-    {
-      beg = purebeg = (char *) xmalloc (PURESIZE);
-      pure_size = PURESIZE;
-      pure_bytes_used_before_overflow += pure_bytes_used;
-      pure_bytes_used = 0;
-    }
+  if (pure_bytes_used + nbytes > PURESIZE)
+    error ("Pure Lisp storage exhausted");
 
   result = (POINTER_TYPE *) (beg + pure_bytes_used);
   pure_bytes_used += nbytes;
   return result;
-}
-
-
-/* Signal an error if PURESIZE is too small.  */
-
-void
-check_pure_size ()
-{
-  if (pure_bytes_used_before_overflow)
-    error ("Pure Lisp storage overflow (approx. %d bytes needed)",
-	   (int) (pure_bytes_used + pure_bytes_used_before_overflow));
 }
 
 
@@ -4044,11 +4025,6 @@ Garbage collection happens automatically if you cons more than\n\
   int message_p;
   Lisp_Object total[8];
   int count = BINDING_STACK_SIZE ();
-
-  /* Can't GC if pure storage overflowed because we can't determine
-     if something is a pure object or not.  */
-  if (pure_bytes_used_before_overflow)
-    return Qnil;
 
   /* In case user calls debug_print during GC,
      don't let that cause a recursive GC.  */
@@ -4294,13 +4270,6 @@ Garbage collection happens automatically if you cons more than\n\
     }
 #endif
 
-  if (!NILP (Vpost_gc_hook))
-    {
-      int count = inhibit_garbage_collection ();
-      safe_run_hooks (Qpost_gc_hook);
-      unbind_to (count, Qnil);
-    }
-  
   return Flist (sizeof total / sizeof *total, total);
 }
 
@@ -5393,16 +5362,14 @@ void
 init_alloc_once ()
 {
   /* Used to do Vpurify_flag = Qt here, but Qt isn't set up yet!  */
-  purebeg = PUREBEG;
-  pure_size = PURESIZE;
   pure_bytes_used = 0;
-  pure_bytes_used_before_overflow = 0;
-
 #if GC_MARK_STACK || defined GC_MALLOC_CHECK
   mem_init ();
   Vdead = make_pure_string ("DEAD", 4, 4, 0);
 #endif
-
+#ifdef HAVE_SHM
+  pure_size = PURESIZE;
+#endif
   all_vectors = 0;
   ignore_warnings = 1;
 #ifdef DOUG_LEA_MALLOC
@@ -5509,12 +5476,6 @@ which includes both saved text and other data.");
   DEFVAR_BOOL ("garbage-collection-messages", &garbage_collection_messages,
     "Non-nil means display messages at start and end of garbage collection.");
   garbage_collection_messages = 0;
-
-  DEFVAR_LISP ("post-gc-hook", &Vpost_gc_hook,
-    "Hook run after garbage collection has finished.");
-  Vpost_gc_hook = Qnil;
-  Qpost_gc_hook = intern ("post-gc-hook");
-  staticpro (&Qpost_gc_hook);
 
   /* We build this in advance because if we wait until we need it, we might
      not be able to allocate the memory to hold it.  */
