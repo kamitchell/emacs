@@ -3243,7 +3243,7 @@ displayed.  */)
 	window = Fsplit_window (window, Qnil, Qnil);
       else
 	{
-	  Lisp_Object upper, lower, other;
+	  Lisp_Object upper, other;
 
 	  window = Fget_lru_window (frames);
 	  /* If the LRU window is selected, and big enough,
@@ -3276,11 +3276,11 @@ displayed.  */)
 	    window = Fframe_selected_window (call0 (Vpop_up_frame_function));
 	  /* If window appears above or below another,
 	     even out their heights.  */
-	  other = upper = lower = Qnil;
+	  other = upper = Qnil;
 	  if (!NILP (XWINDOW (window)->prev))
-	    other = upper = XWINDOW (window)->prev, lower = window;
+	    other = upper = XWINDOW (window)->prev;
 	  if (!NILP (XWINDOW (window)->next))
-	    other = lower = XWINDOW (window)->next, upper = window;
+	    other = XWINDOW (window)->next, upper = window;
 	  if (!NILP (other)
 	      && !NILP (Veven_window_heights)
 	      /* Check that OTHER and WINDOW are vertically arrayed.  */
@@ -6510,6 +6510,3 @@ keys_of_window ()
   initial_define_key (global_map, Ctl('L'), "recenter");
   initial_define_key (meta_map, 'r', "move-to-window-line");
 }
-
-/* arch-tag: 90a9c576-0590-48f1-a5f1-6c96a0452d9f
-   (do not change this comment) */
