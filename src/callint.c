@@ -27,7 +27,6 @@ Boston, MA 02111-1307, USA.  */
 #include "keyboard.h"
 #include "window.h"
 #include "mocklisp.h"
-#include "keymap.h"
 
 #ifdef HAVE_INDEX
 extern char *index P_ ((const char *, int));
@@ -139,7 +138,7 @@ Lisp_Object
 quotify_arg (exp)
      register Lisp_Object exp;
 {
-  if (!INTEGERP (exp) && !STRINGP (exp)
+  if (!FIXNUMP (exp) && !STRINGP (exp)
       && !NILP (exp) && !EQ (exp, Qt))
     return Fcons (Qquote, Fcons (exp, Qnil));
 
@@ -156,7 +155,7 @@ quotify_args (exp)
   for (tail = exp; CONSP (tail); tail = next)
     {
       next = XCDR (tail);
-      XSETCAR (tail, quotify_arg (XCAR (tail)));
+      XCAR (tail) = quotify_arg (XCAR (tail));
     }
   return exp;
 }
@@ -259,6 +258,9 @@ supply if the command inquires which events were used to invoke it.")
 	  function = wrong_type_argument (Qcommandp, function);
 	  goto retry;
 	}
+      if ((EMACS_INT) string == 1)
+	/* Let SPECS (which is nil) be used as the args.  */
+	string = 0;
     }
   else if (COMPILEDP (fun))
     {
@@ -268,7 +270,7 @@ supply if the command inquires which events were used to invoke it.")
     }
   else if (!CONSP (fun))
     goto lose;
-  else if (funcar = XCAR (fun), EQ (funcar, Qautoload))
+  else if (funcar = Fcar (fun), EQ (funcar, Qautoload))
     {
       GCPRO2 (function, prefix_arg);
       do_autoload (fun, function);
@@ -277,7 +279,7 @@ supply if the command inquires which events were used to invoke it.")
     }
   else if (EQ (funcar, Qlambda))
     {
-      specs = Fassq (Qinteractive, Fcdr (XCDR (fun)));
+      specs = Fassq (Qinteractive, Fcdr (Fcdr (fun)));
       if (NILP (specs))
 	goto lose;
       specs = Fcar (Fcdr (specs));
@@ -358,7 +360,7 @@ supply if the command inquires which events were used to invoke it.")
 	    {
 	      teml = Fnthcdr (Vhistory_length, Vcommand_history);
 	      if (CONSP (teml))
-		XSETCDR (teml, Qnil);
+		XCDR (teml) = Qnil;
 	    }
 	}
       single_kboard_state ();
@@ -557,7 +559,7 @@ supply if the command inquires which events were used to invoke it.")
 
 	    /* If the key sequence ends with a down-event,
 	       discard the following up-event.  */
-	    teml = Faref (args[i], make_number (XINT (Flength (args[i])) - 1));
+	    teml = Faref (args[i], make_fixnum (XINT (Flength (args[i])) - 1));
 	    if (CONSP (teml))
 	      teml = XCAR (teml);
 	    if (SYMBOLP (teml))
@@ -585,7 +587,7 @@ supply if the command inquires which events were used to invoke it.")
 
 	    /* If the key sequence ends with a down-event,
 	       discard the following up-event.  */
-	    teml = Faref (args[i], make_number (XINT (Flength (args[i])) - 1));
+	    teml = Faref (args[i], make_fixnum (XINT (Flength (args[i])) - 1));
 	    if (CONSP (teml))
 	      teml = XCAR (teml);
 	    if (SYMBOLP (teml))
@@ -776,7 +778,7 @@ supply if the command inquires which events were used to invoke it.")
 	{
 	  teml = Fnthcdr (Vhistory_length, Vcommand_history);
 	  if (CONSP (teml))
-	    XSETCDR (teml, Qnil);
+	    XCDR (teml) = Qnil;
 	}
     }
 
@@ -812,9 +814,9 @@ Its numeric meaning is what you would get from `(interactive \"p\")'.")
     XSETFASTINT (val, 1);
   else if (EQ (raw, Qminus))
     XSETINT (val, -1);
-  else if (CONSP (raw) && INTEGERP (XCAR (raw)))
+  else if (CONSP (raw) && FIXNUMP (XCAR (raw)))
     XSETINT (val, XINT (XCAR (raw)));
-  else if (INTEGERP (raw))
+  else if (FIXNUMP (raw))
     val = raw;
   else
     XSETFASTINT (val, 1);
@@ -868,7 +870,7 @@ syms_of_callint ()
   DEFVAR_KBOARD ("prefix-arg", Vprefix_arg,
     "The value of the prefix argument for the next editing command.\n\
 It may be a number, or the symbol `-' for just a minus sign as arg,\n\
-or a list whose car is a number for just one or more C-u's\n\
+or a list whose car is a number for just one or more C-U's\n\
 or nil if no argument has been specified.\n\
 \n\
 You cannot examine this variable to find the argument for this command\n\
@@ -883,7 +885,7 @@ See `prefix-arg' for the meaning of the value.");
   DEFVAR_LISP ("current-prefix-arg", &Vcurrent_prefix_arg,
     "The value of the prefix argument for this editing command.\n\
 It may be a number, or the symbol `-' for just a minus sign as arg,\n\
-or a list whose car is a number for just one or more C-u's\n\
+or a list whose car is a number for just one or more C-U's\n\
 or nil if no argument has been specified.\n\
 This is what `(interactive \"P\")' returns.");
   Vcurrent_prefix_arg = Qnil;
