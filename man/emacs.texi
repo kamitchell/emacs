@@ -8,7 +8,7 @@
 
 @c The edition number appears in several places in this file
 @set EDITION   Fourteenth
-@set EMACSVER  21.0.107
+@set EMACSVER  21.1
 
 @ifnottex
 This is the @value{EDITION} edition of the @cite{GNU Emacs Manual},
@@ -44,7 +44,7 @@ Software Foundation raise funds for GNU development.''
 @c copy of this manual that will be published.  the manual should go
 @c onto the distribution in the full, 8.5 x 11" size.  
 
-@c @smallbook
+@smallbook
 
 @iftex
 @kbdinputstyle code
