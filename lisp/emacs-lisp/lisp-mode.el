@@ -83,78 +83,19 @@
 (defvar lisp-imenu-generic-expression
   (list
    (list nil
-	 (purecopy (concat "^\\s-*("
-			   (eval-when-compile
-			     (regexp-opt
-			      '("defun" "defun*" "defsubst" "defmacro"
-				"defadvice" "define-skeleton"
-				"define-minor-mode" "define-derived-mode"
-				"define-compiler-macro" "define-modify-macro"
-				"defsetf" "define-setf-expander"
-				"define-method-combination"
-				"defgeneric" "defmethod") t)
-			     "\\s-+\\(\\sw\\(\\sw\\|\\s_\\)+\\)")))
-	 2)
+	 (purecopy "^\\s-*(def\\(un\\*?\\|subst\\|macro\\|advice\\|\
+ine-skeleton\\|ine-minor-mode\\)\\s-+\\(\\sw\\(\\sw\\|\\s_\\)+\\)") 2)
    (list (purecopy "Variables")
-	 (purecopy (concat "^\\s-*("
-			   (eval-when-compile
-			     (regexp-opt
-			      '("defvar" "defconst" "defconstant" "defcustom"
-				"defparameter" "define-symbol-macro") t)
-			     "\\s-+\\(\\sw\\(\\sw\\|\\s_\\)+\\)")))
-	 2)
+	 (purecopy "^\\s-*(def\\(var\\|const\\|custom\\)\\s-+\
+\\(\\sw\\(\\sw\\|\\s_\\)+\\)") 2)
    (list (purecopy "Types")
-	 (purecopy (concat "^\\s-*("
-			   (eval-when-compile
-			     (regexp-opt
-			      '("defgroup" "deftype" "defstruct" "defclass"
-				"define-condition" "define-widget" "defface"
-				"defpackage") t)
-			     "\\s-+'?\\(\\sw\\(\\sw\\|\\s_\\)+\\)")))
+	 (purecopy "^\\s-*(def\\(group\\|type\\|struct\\|class\\|\
+ine-condition\\|ine-widget\\|face\\)\\s-+'?\\(\\sw\\(\\sw\\|\\s_\\)+\\)")
 	 2))
 
   "Imenu generic expression for Lisp mode.  See `imenu-generic-expression'.")
 
-;; This was originally in autoload.el and is still used there.
-(put 'autoload 'doc-string-elt 3)
-(put 'defun    'doc-string-elt 3)
-(put 'defun*    'doc-string-elt 3)
-(put 'defvar   'doc-string-elt 3)
-(put 'defcustom 'doc-string-elt 3)
-(put 'defconst 'doc-string-elt 3)
-(put 'defmacro 'doc-string-elt 3)
-(put 'defsubst 'doc-string-elt 3)
-(put 'define-skeleton 'doc-string-elt 2)
-(put 'define-derived-mode 'doc-string-elt 4)
-(put 'easy-mmode-define-minor-mode 'doc-string-elt 2)
-(put 'define-minor-mode 'doc-string-elt 2)
-(put 'define-generic-mode 'doc-string-elt 7)
-;; define-global-mode has no explicit docstring.
-(put 'easy-mmode-define-global-mode 'doc-string-elt 0)
-
-
-(defun lisp-font-lock-syntactic-face-function (state)
-  (if (nth 3 state)
-      (if (and (eq (nth 0 state) 1)
-	       ;; This might be a docstring.
-	       (save-excursion
-		 (let ((n 0))
-		   (goto-char (nth 8 state))
-		   (condition-case nil
-		       (while (progn (backward-sexp 1) (setq n (1+ n))))
-		     (scan-error nil))
-		   (when (> n 0)
-		     (let ((sym (intern-soft
-				 (buffer-substring
-				  (point) (progn (forward-sexp 1) (point))))))
-		       (eq n (or (get sym 'doc-string-elt) 3)))))))
-	  font-lock-doc-face
-	font-lock-string-face)
-    font-lock-comment-face))
-
-;; The LISP-SYNTAX argument is used by code in inf-lisp.el and is
-;; (uselessly) passed from pp.el, chistory.el, gnus-kill.el and score-mode.el
-(defun lisp-mode-variables (&optional lisp-syntax)
+(defun lisp-mode-variables (lisp-syntax)
   (cond (lisp-syntax
 	  (set-syntax-table lisp-mode-syntax-table)))
   (setq local-abbrev-table lisp-mode-abbrev-table)
@@ -203,9 +144,7 @@
 	'((lisp-font-lock-keywords
 	   lisp-font-lock-keywords-1 lisp-font-lock-keywords-2)
 	  nil nil (("+-*/.<>=!?$%_&~^:" . "w")) beginning-of-defun
-	  (font-lock-mark-block-function . mark-defun)
-	  (font-lock-syntactic-face-function
-	   . lisp-font-lock-syntactic-face-function))))
+	  (font-lock-mark-block-function . mark-defun))))
 
 (defun lisp-outline-level ()
   "Lisp mode `outline-level' function."
@@ -309,7 +248,7 @@ Blank lines separate paragraphs.  Semicolons start comments.
 \\{emacs-lisp-mode-map}
 Entry to this mode calls the value of `emacs-lisp-mode-hook'
 if that value is non-nil."
-  (lisp-mode-variables)
+  (lisp-mode-variables nil)
   (setq imenu-case-fold-search nil))
 
 (defvar lisp-mode-map
@@ -332,10 +271,9 @@ or to switch back to an existing one.
 
 Entry to this mode calls the value of `lisp-mode-hook'
 if that value is non-nil."
-  (lisp-mode-variables)
-  (set (make-local-variable 'comment-start-skip)
-       "\\(\\(^\\|[^\\\\\n]\\)\\(\\\\\\\\\\)*\\)\\(;+\\|#|\\) *")
-  (set (make-local-variable 'font-lock-keywords-case-fold-search) t)
+  (lisp-mode-variables t)
+  (make-local-variable 'font-lock-keywords-case-fold-search)
+  (setq font-lock-keywords-case-fold-search t)
   (setq imenu-case-fold-search t))
 
 ;; This will do unless inf-lisp.el is loaded.
@@ -574,10 +512,11 @@ Return the result of evaluation."
 (defun eval-defun (edebug-it)
   "Evaluate the top-level form containing point, or after point.
 
-If the current defun is actually a call to `defvar', then reset the
-variable using its initial value expression even if the variable
-already has some other value.  (Normally `defvar' does not change the
-variable's value if it already has a value.)
+If the current defun is actually a call to `defvar' or `defcustom',
+evaluating it this way resets the variable using its initial value
+expression even if the variable already has some other value.
+\(Normally `defvar' and `defcustom' do not alter the value if there
+already is one.)
 
 With a prefix argument, instrument the code for Edebug.
 
@@ -635,9 +574,10 @@ which see."
 With argument, indent any additional lines of the same expression
 rigidly along with this one."
   (interactive "P")
-  (let ((indent (calculate-lisp-indent)) shift-amt end
-	(pos (- (point-max) (point)))
-	(beg (progn (beginning-of-line) (point))))
+  (let ((indent (calculate-lisp-indent)) shift-amt beg end
+	(pos (- (point-max) (point))))
+    (beginning-of-line)
+    (setq beg (point))
     (skip-chars-forward " \t")
     (if (or (null indent) (looking-at "\\s<\\s<\\s<"))
 	;; Don't alter indentation of a ;;; comment line
