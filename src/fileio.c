@@ -591,8 +591,7 @@ file_name_as_directory (out, in)
   /* For Unix syntax, Append a slash if necessary */
   if (!IS_DIRECTORY_SEP (out[size]))
     {
-      /* Cannot use DIRECTORY_SEP, which could have any value */
-      out[size + 1] = '/';
+      out[size + 1] = DIRECTORY_SEP;
       out[size + 2] = '\0';
     }
 #ifdef DOS_NT
@@ -604,7 +603,7 @@ file_name_as_directory (out, in)
 
 DEFUN ("file-name-as-directory", Ffile_name_as_directory,
        Sfile_name_as_directory, 1, 1, 0,
-  "Return a string representing the file name FILE interpreted as a directory.\n\
+  "Return a string representing file FILENAME interpreted as a directory.\n\
 This operation exists because a directory is also a file, but its name as\n\
 a directory is different from its name as a file.\n\
 The result can be used as the value of `default-directory'\n\
@@ -1034,23 +1033,7 @@ See also the function `substitute-in-file-name'.")
   if (NILP (default_directory))
     default_directory = current_buffer->directory;
   if (! STRINGP (default_directory))
-    {
-#ifdef DOS_NT
-      /* "/" is not considered a root directory on DOS_NT, so using "/"
-	 here causes an infinite recursion in, e.g., the following:
-
-            (let (default-directory)
-	      (expand-file-name "a"))
-
-	 To avoid this, we set default_directory to the root of the
-	 current drive.  */
-      extern char *emacs_root_dir (void);
-
-      default_directory = build_string (emacs_root_dir ());
-#else
-      default_directory = build_string ("/");
-#endif
-    }
+    default_directory = build_string ("/");
 
   if (!NILP (default_directory))
     {
@@ -2356,7 +2339,6 @@ A prefix arg makes KEEP-TIME non-nil.")
 		 XSTRING (encoded_newname)->data,
 		 FALSE))
     report_file_error ("Copying file", Fcons (file, Fcons (newname, Qnil)));
-  /* CopyFile retains the timestamp by default.  */
   else if (NILP (keep_time))
     {
       EMACS_TIME now;
@@ -2511,7 +2493,7 @@ DEFUN ("make-directory-internal", Fmake_directory_internal,
 }
 
 DEFUN ("delete-directory", Fdelete_directory, Sdelete_directory, 1, 1, "FDelete directory: ",
-  "Delete the directory named DIRECTORY.  Does not follow symlinks.")
+  "Delete the directory named DIRECTORY.")
   (directory)
      Lisp_Object directory;
 {
@@ -2537,22 +2519,15 @@ DEFUN ("delete-directory", Fdelete_directory, Sdelete_directory, 1, 1, "FDelete 
 }
 
 DEFUN ("delete-file", Fdelete_file, Sdelete_file, 1, 1, "fDelete file: ",
-  "Delete file named FILENAME.  If it is a symlink, remove the symlink.\n\
+  "Delete file named FILENAME.\n\
 If file has multiple names, it continues to exist with the other names.")
   (filename)
      Lisp_Object filename;
 {
   Lisp_Object handler;
   Lisp_Object encoded_file;
-  struct gcpro gcpro1;
 
-  GCPRO1 (filename);
-  if (!NILP (Ffile_directory_p (filename)))
-    Fsignal (Qfile_error,
-	     Fcons (build_string ("Removing old name: is a directory"),
-		    Fcons (filename, Qnil)));
-  UNGCPRO;
-
+  CHECK_STRING (filename, 0);
   filename = Fexpand_file_name (filename, Qnil);
 
   handler = Ffind_file_name_handler (filename, Qdelete_file);
@@ -3217,6 +3192,12 @@ searchable directory.")
   if (!NILP (handler))
     return call2 (handler, Qfile_accessible_directory_p, filename);
 
+  /* It's an unlikely combination, but yes we really do need to gcpro:
+     Suppose that file-accessible-directory-p has no handler, but
+     file-directory-p does have a handler; this handler causes a GC which
+     relocates the string in `filename'; and finally file-directory-p
+     returns non-nil.  Then we would end up passing a garbaged string
+     to file-executable-p.  */
   GCPRO1 (filename);
   tem = (NILP (Ffile_directory_p (filename))
 	 || NILP (Ffile_executable_p (filename)));
@@ -3484,6 +3465,7 @@ read_non_regular ()
   nbytes = emacs_read (non_regular_fd,
 		       BEG_ADDR + PT_BYTE - 1 + non_regular_inserted,
 		       non_regular_nbytes);
+  Fsignal (Qquit, Qnil);
   immediate_quit = 0;
   return make_number (nbytes);
 }
@@ -4623,56 +4605,56 @@ This does code conversion according to the value of\n\
     Lisp_Object val;
 
     if (auto_saving)
-    val = Qnil;
-  else if (!NILP (Vcoding_system_for_write))
-    val = Vcoding_system_for_write;
-  else
-    {
-      /* If the variable `buffer-file-coding-system' is set locally,
-	 it means that the file was read with some kind of code
-	 conversion or the variable is explicitly set by users.  We
-	 had better write it out with the same coding system even if
-	 `enable-multibyte-characters' is nil.
+      val = Qnil;
+    else if (!NILP (Vcoding_system_for_write))
+      val = Vcoding_system_for_write;
+    else
+      {
+	/* If the variable `buffer-file-coding-system' is set locally,
+	   it means that the file was read with some kind of code
+	   conversion or the variable is explicitly set by users.  We
+	   had better write it out with the same coding system even if
+	   `enable-multibyte-characters' is nil.
 
-	 If it is not set locally, we anyway have to convert EOL
-	 format if the default value of `buffer-file-coding-system'
-	 tells that it is not Unix-like (LF only) format.  */
-      int using_default_coding = 0;
-      int force_raw_text = 0;
+	   If it is not set locally, we anyway have to convert EOL
+	   format if the default value of `buffer-file-coding-system'
+	   tells that it is not Unix-like (LF only) format.  */
+	int using_default_coding = 0;
+	int force_raw_text = 0;
 
-      val = current_buffer->buffer_file_coding_system;
-      if (NILP (val)
-	  || NILP (Flocal_variable_p (Qbuffer_file_coding_system, Qnil)))
-	{
-	  val = Qnil;
-	  if (NILP (current_buffer->enable_multibyte_characters))
-	    force_raw_text = 1;
-	}
+	val = current_buffer->buffer_file_coding_system;
+	if (NILP (val)
+	    || NILP (Flocal_variable_p (Qbuffer_file_coding_system, Qnil)))
+	  {
+	    val = Qnil;
+	    if (NILP (current_buffer->enable_multibyte_characters))
+	      force_raw_text = 1;
+	  }
 
-      if (NILP (val))
-	{
-	  /* Check file-coding-system-alist.  */
-	  Lisp_Object args[7], coding_systems;
+	if (NILP (val))
+	  {
+	    /* Check file-coding-system-alist.  */
+	    Lisp_Object args[7], coding_systems;
 
-	  args[0] = Qwrite_region; args[1] = start; args[2] = end;
-	  args[3] = filename; args[4] = append; args[5] = visit;
-	  args[6] = lockname;
-	  coding_systems = Ffind_operation_coding_system (7, args);
-	  if (CONSP (coding_systems) && !NILP (XCDR (coding_systems)))
-	    val = XCDR (coding_systems);
-	}
+	    args[0] = Qwrite_region; args[1] = start; args[2] = end;
+	    args[3] = filename; args[4] = append; args[5] = visit;
+	    args[6] = lockname;
+	    coding_systems = Ffind_operation_coding_system (7, args);
+	    if (CONSP (coding_systems) && !NILP (XCDR (coding_systems)))
+	      val = XCDR (coding_systems);
+	  }
 
-      if (NILP (val)
-	  && !NILP (current_buffer->buffer_file_coding_system))
-	{
-	  /* If we still have not decided a coding system, use the
-	     default value of buffer-file-coding-system.  */
-	  val = current_buffer->buffer_file_coding_system;
-	  using_default_coding = 1;
-	}
+	if (NILP (val)
+	    && !NILP (current_buffer->buffer_file_coding_system))
+	  {
+	    /* If we still have not decided a coding system, use the
+	       default value of buffer-file-coding-system.  */
+	    val = current_buffer->buffer_file_coding_system;
+	    using_default_coding = 1;
+	  }
 
-      if (!force_raw_text
-	  && !NILP (Ffboundp (Vselect_safe_coding_system_function)))
+	if (!force_raw_text
+	    && !NILP (Ffboundp (Vselect_safe_coding_system_function)))
 	  /* Confirm that VAL can surely encode the current region.  */
 	  val = call3 (Vselect_safe_coding_system_function, start, end, val);
 
@@ -4681,10 +4663,10 @@ This does code conversion according to the value of\n\
 	    && !using_default_coding)
 	  {
 	    if (! EQ (default_buffer_file_coding.symbol,
-		    buffer_defaults.buffer_file_coding_system))
-	    setup_coding_system (buffer_defaults.buffer_file_coding_system,
-				 &default_buffer_file_coding);
-	  if (default_buffer_file_coding.eol_type != CODING_EOL_UNDECIDED)
+		      buffer_defaults.buffer_file_coding_system))
+	      setup_coding_system (buffer_defaults.buffer_file_coding_system,
+				   &default_buffer_file_coding);
+	    if (default_buffer_file_coding.eol_type != CODING_EOL_UNDECIDED)
 	      {
 		Lisp_Object subsidiaries;
 
@@ -5490,7 +5472,6 @@ A non-nil CURRENT-ONLY argument means save only current buffer.")
   int count = specpdl_ptr - specpdl;
   int orig_minibuffer_auto_raise = minibuffer_auto_raise;
   int message_p = push_message ();
-  struct gcpro gcpro1, gcpro2;
 
   /* Ordinarily don't quit within this function,
      but don't make it impossible to quit (in case we get hung in I/O).  */
@@ -5518,12 +5499,9 @@ A non-nil CURRENT-ONLY argument means save only current buffer.")
       if (!NILP (Vrun_hooks))
 	{
 	  Lisp_Object dir;
-	  dir = Qnil;
-	  GCPRO2 (dir, listfile);
 	  dir = Ffile_name_directory (listfile);
 	  if (NILP (Ffile_directory_p (dir)))
 	    call2 (Qmake_directory, dir, Qt);
-	  UNGCPRO;
 	}
 
       stream = fopen (XSTRING (listfile)->data, "w");
@@ -6193,8 +6171,7 @@ of the form (POSITION . STRING), consisting of strings to be effectively\n\
 inserted at the specified positions of the file being written (1 means to\n\
 insert before the first byte written).  The POSITIONs must be sorted into\n\
 increasing order.  If there are several functions in the list, the several\n\
-lists are merged destructively.  Alternatively, the function can return\n\
-with a different buffer current and value nil.");
+lists are merged destructively.");
   Vwrite_region_annotate_functions = Qnil;
 
   DEFVAR_LISP ("write-region-annotations-so-far",
@@ -6278,3 +6255,4 @@ a non-nil value.");
   defsubr (&Sunix_sync);
 #endif
 }
+
