@@ -312,6 +312,7 @@ Default value, nil, means edit the string instead."
     (define-key map [delete-frame] nil)
     (define-key map [iconify-frame] nil)
     (define-key map [make-frame-visible] nil)
+    (define-key map [mouse-movement] nil)
     ;; For searching multilingual text.
     (define-key map "\C-\\" 'isearch-toggle-input-method)
     (define-key map "\C-^" 'isearch-toggle-specified-input-method)
@@ -365,8 +366,6 @@ Default value, nil, means edit the string instead."
 ;   either nil, t, or 'yes.  'yes means the same as t except that mixed
 ;   case in the search string is ignored.
 (defvar isearch-case-fold-search nil)
-
-(defvar isearch-last-case-fold-search nil)
 
 ;; Used to save default value while isearch is active
 (defvar isearch-original-minibuffer-message-timeout nil)
@@ -532,7 +531,6 @@ is treated as a regexp.  See \\[isearch-forward] for more info."
 	isearch-regexp regexp
 	isearch-word word-p
 	isearch-op-fun op-fun
-	isearch-last-case-fold-search isearch-case-fold-search
 	isearch-case-fold-search case-fold-search
 	isearch-string ""
 	isearch-message ""
@@ -648,7 +646,7 @@ is treated as a regexp.  See \\[isearch-forward] for more info."
   (let ((command `(isearch-resume ,isearch-string ,isearch-regexp
 				  ,isearch-word ,isearch-forward
 				  ,isearch-message
-				  ',isearch-case-fold-search)))
+				  ,isearch-case-fold-search)))
     (unless (equal (car command-history) command)
       (setq command-history (cons command command-history))))
 
@@ -952,8 +950,7 @@ Use `isearch-exit' to quit without signaling."
 		    "")
 		isearch-message
 		(mapconcat 'isearch-text-char-description
-			   isearch-string "")
-		isearch-case-fold-search isearch-last-case-fold-search)
+			   isearch-string ""))
 	;; If already have what to search for, repeat it.
 	(or isearch-success
 	    (progn
