@@ -258,6 +258,8 @@ extern Lisp_Object w32_list_fonts P_ ((struct frame *, Lisp_Object, int, int));
 extern struct font_info *w32_get_font_info (), *w32_query_font ();
 extern void w32_cache_char_metrics (XFontStruct *font);
 extern void w32_find_ccl_program();
+extern Lisp_Object x_get_font_repertory P_ ((struct frame *,
+					     struct font_info *));
 
 #define PIX_TYPE COLORREF
 
@@ -733,6 +735,3 @@ int image_ascent P_ ((struct image *, struct face *));
       ? BDF_1D_FONT : BDF_2D_FONT))
 
 typedef DWORD (WINAPI * ClipboardSequence_Proc) ();
-
-/* arch-tag: f201d05a-1240-4fc5-8ea4-ca24d4ee5671
-   (do not change this comment) */
