@@ -649,7 +649,7 @@ to run it every morning at 1am."
 
 
 (defun diary-name-pattern (string-array &optional fullname)
-  "Convert an STRING-ARRAY, an array of strings to a pattern.
+  "Convert a STRING-ARRAY, an array of strings to a pattern.
 The pattern will match any of the strings, either entirely or abbreviated
 to three characters.  An abbreviated form will match with or without a period;
 If the optional FULLNAME is t, abbreviations will not match, just the full
@@ -947,11 +947,8 @@ A value of 0 in any position of the pattern is a wildcard."
   "Returns t if E1 is earlier than E2."
   (or (calendar-date-compare e1 e2)
       (and (calendar-date-equal (car e1) (car e2))
-           (let* ((ts1 (cadr e1)) (t1 (diary-entry-time ts1))
-                  (ts2 (cadr e2)) (t2 (diary-entry-time ts2)))
-             (or (< t1 t2)
-                 (and (= t1 t2)
-                      (string-lessp ts1 ts2)))))))
+           (< (diary-entry-time (car (cdr e1)))
+              (diary-entry-time (car (cdr e2)))))))
 
 (defcustom diary-unknown-time
   -9999
@@ -970,19 +967,19 @@ example, returns 1325 for 1:25pm.  Returns `diary-unknown-time' (default value
 XX:XX (military time), and XXam, XXAM, XXpm, XXPM, XX:XXam, XX:XXAM XX:XXpm,
 or XX:XXPM."
   (let ((case-fold-search nil))
-    (cond ((string-match        ; Military time
+    (cond ((string-match;; Military time
 	    "\\`[ \t\n\\^M]*\\([0-9]?[0-9]\\):?\\([0-9][0-9]\\)\\(\\>\\|[^ap]\\)" s)
 	   (+ (* 100 (string-to-int
 		      (substring s (match-beginning 1) (match-end 1))))
 	      (string-to-int (substring s (match-beginning 2) (match-end 2)))))
-	  ((string-match        ; Hour only  XXam or XXpm
+	  ((string-match;; Hour only  XXam or XXpm
 	    "\\`[ \t\n\\^M]*\\([0-9]?[0-9]\\)\\([ap]\\)m\\>" s)
 	   (+ (* 100 (% (string-to-int
 			   (substring s (match-beginning 1) (match-end 1)))
 			  12))
 	      (if (equal ?a (downcase (aref s (match-beginning 2))))
 		  0 1200)))
-	  ((string-match        ; Hour and minute  XX:XXam or XX:XXpm
+	  ((string-match;; Hour and minute  XX:XXam or XX:XXpm
 	    "\\`[ \t\n\\^M]*\\([0-9]?[0-9]\\):\\([0-9][0-9]\\)\\([ap]\\)m\\>" s)
 	   (+ (* 100 (% (string-to-int
 			   (substring s (match-beginning 1) (match-end 1)))
@@ -990,7 +987,9 @@ or XX:XXPM."
 	      (string-to-int (substring s (match-beginning 2) (match-end 2)))
 	      (if (equal ?a (downcase (aref s (match-beginning 3))))
 		  0 1200)))
-	  (t diary-unknown-time)))) ; Unrecognizable
+	  (t diary-unknown-time))));; Unrecognizable
+
+;; Unrecognizable
 
 (defun list-sexp-diary-entries (date)
   "Add sexp entries for DATE from the diary file to `diary-entries-list'.
