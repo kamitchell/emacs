@@ -26,7 +26,7 @@ Boston, MA 02111-1307, USA.  */
 #include "lisp.h"
 #include "commands.h"
 #include "buffer.h"
-#include "charset.h"
+#include "character.h"
 #include "dispextern.h"
 #include "keyboard.h"
 #include "frame.h"
@@ -547,7 +547,7 @@ read_minibuf (map, initial, prompt, backup_n, expflag,
 
   Vminibuf_scroll_window = selected_window;
   if (minibuf_level == 1 || !EQ (minibuf_window, selected_window))
-    minibuf_selected_window = selected_window;
+    Vminibuf_selected_window = selected_window;
   Fset_window_buffer (minibuf_window, Fcurrent_buffer ());
   Fselect_window (minibuf_window);
   XSETFASTINT (XWINDOW (minibuf_window)->hscroll, 0);
