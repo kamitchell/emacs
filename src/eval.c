@@ -667,33 +667,6 @@ and the result should be a form to be evaluated instead of the original.")
   return fn_name;
 }
 
-
-DEFUN ("defvaralias", Fdefvaralias, Sdefvaralias, 2, 2, 0,
-  "Make SYMBOL a variable alias for symbol ALIASED.\n\
-Setting the value of SYMBOL will subsequently set the value of ALIASED,\n\
-and getting the value of SYMBOL will return the value ALIASED has.\n\
-ALIASED nil means remove the alias; SYMBOL is unbound after that.")
-  (symbol, aliased)
-     Lisp_Object symbol, aliased;
-{
-  struct Lisp_Symbol *sym;
-  
-  CHECK_SYMBOL (symbol, 0);
-  CHECK_SYMBOL (aliased, 1);
-
-  if (SYMBOL_CONSTANT_P (symbol))
-    error ("Cannot make a constant an alias");
-
-  sym = XSYMBOL (symbol);
-  sym->indirect_variable = 1;
-  sym->value = aliased;
-  sym->constant = SYMBOL_CONSTANT_P (aliased);
-  LOADHIST_ATTACH (symbol);
-  
-  return aliased;
-}
-
-
 DEFUN ("defvar", Fdefvar, Sdefvar, 1, UNEVALLED, 0,
   "Define SYMBOL as a variable.\n\
 You are not required to define a variable in order to use it,\n\
@@ -2928,22 +2901,25 @@ specbind (symbol, value)
      Lisp_Object symbol, value;
 {
   Lisp_Object ovalue;
-  Lisp_Object valcontents;
 
   CHECK_SYMBOL (symbol, 0);
   if (specpdl_ptr == specpdl + specpdl_size)
     grow_specpdl ();
 
-  /* The most common case is that of a non-constant symbol with a
-     trivial value.  Make that as fast as we can.  */
-  valcontents = SYMBOL_VALUE (symbol);
-  if (!MISCP (valcontents) && !SYMBOL_CONSTANT_P (symbol))
+  /* The most common case is that a non-constant symbol with a trivial
+     value.  Make that as fast as we can.  */
+  if (!MISCP (XSYMBOL (symbol)->value)
+      && !EQ (symbol, Qnil)
+      && !EQ (symbol, Qt)
+      && !(XSYMBOL (symbol)->name->data[0] == ':'
+	   && EQ (XSYMBOL (symbol)->obarray, initial_obarray)
+	   && !EQ (value, symbol)))
     {
       specpdl_ptr->symbol = symbol;
-      specpdl_ptr->old_value = valcontents;
+      specpdl_ptr->old_value = XSYMBOL (symbol)->value;
       specpdl_ptr->func = NULL;
       ++specpdl_ptr;
-      SET_SYMBOL_VALUE (symbol, value);
+      XSYMBOL (symbol)->value = value;
     }
   else
     {
@@ -3062,8 +3038,8 @@ unbind_to (count, value)
 	  /* If variable has a trivial value (no forwarding), we can
 	     just set it.  No need to check for constant symbols here,
 	     since that was already done by specbind.  */
-	  if (!MISCP (SYMBOL_VALUE (specpdl_ptr->symbol)))
-	    SET_SYMBOL_VALUE (specpdl_ptr->symbol, specpdl_ptr->old_value);
+	  if (!MISCP (XSYMBOL (specpdl_ptr->symbol)->value))
+	    XSYMBOL (specpdl_ptr->symbol)->value = specpdl_ptr->old_value;
 	  else
 	    set_internal (specpdl_ptr->symbol, specpdl_ptr->old_value, 0, 1);
 	}
@@ -3308,6 +3284,8 @@ Does not apply to errors handled by `condition-case' or those\n\
 matched by `debug-ignored-errors'.\n\
 If the value is a list, an error only means to enter the debugger\n\
 if one of its condition symbols appears in the list.\n\
+When you evaluate an expression interactively, this variable\n\
+is normally bound to the value of `eval-expression-debug-on-error'.\n\
 See also variable `debug-on-quit'.");
   Vdebug_on_error = Qnil;
 
@@ -3322,7 +3300,9 @@ It does not apply to errors handled by `condition-case'.");
 
   DEFVAR_BOOL ("debug-on-quit", &debug_on_quit,
     "*Non-nil means enter debugger if quit is signaled (C-g, for example).\n\
-Does not apply if quit is handled by a `condition-case'.");
+Does not apply if quit is handled by a `condition-case'.\n\
+When you evaluate an expression interactively, this variable\n\
+is normally bound to the value of `eval-expression-debug-on-quit'.");
   debug_on_quit = 0;
 
   DEFVAR_BOOL ("debug-on-next-call", &debug_on_next_call,
@@ -3382,7 +3362,6 @@ still determine whether to handle the particular condition.");
   defsubr (&Sdefun);
   defsubr (&Sdefmacro);
   defsubr (&Sdefvar);
-  defsubr (&Sdefvaralias);
   defsubr (&Sdefconst);
   defsubr (&Suser_variable_p);
   defsubr (&Slet);
