@@ -473,7 +473,7 @@ static void x_clip_to_row P_ ((struct window *, struct glyph_row *,
 			       GC, int));
 static int x_phys_cursor_in_rect_p P_ ((struct window *, XRectangle *));
 static void x_draw_row_bitmaps P_ ((struct window *, struct glyph_row *));
-static void note_overwritten_text_cursor P_ ((struct window *, int, int));
+static void notice_overwritten_cursor P_ ((struct window *, int, int));
 static void x_flush P_ ((struct frame *f));
 static void x_update_begin P_ ((struct frame *));
 static void x_update_window_begin P_ ((struct window *));
@@ -5311,7 +5311,7 @@ x_write_glyphs (start, len)
 		     &real_start, &real_end, 0);
 
   /* If we drew over the cursor, note that it is not visible any more.  */
-  note_overwritten_text_cursor (updated_window, real_start,
+  notice_overwritten_cursor (updated_window, real_start,
 				real_end - real_start);
 
   UNBLOCK_INPUT;
@@ -5368,7 +5368,7 @@ x_insert_glyphs (start, len)
   hpos = start - row->glyphs[updated_area];
   x_draw_glyphs (w, output_cursor.x, row, updated_area, hpos, hpos + len,
 		 DRAW_NORMAL_TEXT, &real_start, &real_end, 0);
-  note_overwritten_text_cursor (w, real_start, real_end - real_start);
+  notice_overwritten_cursor (w, real_start, real_end - real_start);
   
   /* Advance the output cursor.  */
   output_cursor.hpos += len;
@@ -5447,7 +5447,7 @@ x_clear_end_of_line (to_x)
   
   /* Notice if the cursor will be cleared by this operation.  */
   if (!updated_row->full_width_p)
-    note_overwritten_text_cursor (w, output_cursor.hpos, -1);
+    notice_overwritten_cursor (w, output_cursor.hpos, -1);
 
   from_x = output_cursor.x;
      
@@ -8736,6 +8736,7 @@ x_create_toolkit_scroll_bar (f, bar)
   XtSetArg (av[ac], XtNorientation, XtorientVertical); ++ac;
   /* For smoother scrolling with Xaw3d   -sm */
   /* XtSetArg (av[ac], XtNpickTop, True); ++ac; */
+  /* XtSetArg (av[ac], XtNbeNiceToColormap, True); ++ac; */
   
   pixel = f->output_data.x->scroll_bar_foreground_pixel;
   if (pixel != -1)
@@ -8750,61 +8751,7 @@ x_create_toolkit_scroll_bar (f, bar)
       XtSetArg (av[ac], XtNbackground, pixel);
       ++ac;
     }
-
-  /* Top/bottom shadow colors.  */
-
-  /* Allocate them, if necessary.  */
-  if (f->output_data.x->scroll_bar_top_shadow_pixel == -1)
-    {
-      pixel = f->output_data.x->scroll_bar_background_pixel;
-      if (!x_alloc_lighter_color (f, FRAME_X_DISPLAY (f), FRAME_X_COLORMAP (f),
-				  &pixel, 1.2, 0x8000))
-	pixel = -1;
-      f->output_data.x->scroll_bar_top_shadow_pixel = pixel;
-    }
-  if (f->output_data.x->scroll_bar_bottom_shadow_pixel == -1)
-    {
-      pixel = f->output_data.x->scroll_bar_background_pixel;
-      if (!x_alloc_lighter_color (f, FRAME_X_DISPLAY (f), FRAME_X_COLORMAP (f),
-				  &pixel, 0.6, 0x4000))
-	pixel = -1;
-      f->output_data.x->scroll_bar_bottom_shadow_pixel = pixel;
-    }
-
-  /* Tell the toolkit about them.  */
-  if (f->output_data.x->scroll_bar_top_shadow_pixel == -1
-      || f->output_data.x->scroll_bar_bottom_shadow_pixel == -1)
-    /* We tried to allocate a color for the top/bottom shadow, and
-       failed, so tell Xaw3d to use dithering instead.   */
-    {
-      XtSetArg (av[ac], XtNbeNiceToColormap, True);
-      ++ac;
-    }
-  else
-    /* Tell what colors Xaw3d should use for the top/bottom shadow, to
-       be more consistent with other emacs 3d colors, and since Xaw3d is
-       not good at dealing with allocation failure.  */
-    {
-      /* This tells Xaw3d to use real colors instead of dithering for
-	 the shadows.  */
-      XtSetArg (av[ac], XtNbeNiceToColormap, False);
-      ++ac;
-
-      /* Specify the colors.  */
-      pixel = f->output_data.x->scroll_bar_top_shadow_pixel;
-      if (pixel != -1)
-	{
-	  XtSetArg (av[ac], "topShadowPixel", pixel);
-	  ++ac;
-	}
-      pixel = f->output_data.x->scroll_bar_bottom_shadow_pixel;
-      if (pixel != -1)
-	{
-	  XtSetArg (av[ac], "bottomShadowPixel", pixel);
-	  ++ac;
-	}
-    }
-
+  
   widget = XtCreateWidget (scroll_bar_name, scrollbarWidgetClass,
 			   f->output_data.x->edit_widget, av, ac);
 
@@ -10579,8 +10526,7 @@ XTread_socket (sd, bufp, numchars, expected)
 			   || IsKeypadKey (keysym) /* 0xff80 <= x < 0xffbe */
 			   || IsFunctionKey (keysym) /* 0xffbe <= x < 0xffe1 */
 			   /* Any "vendor-specific" key is ok.  */
-			   || (orig_keysym & (1 << 28))
-			   || (keysym != NoSymbol && nbytes == 0))
+			   || (orig_keysym & (1 << 28)))
 			  && ! (IsModifierKey (orig_keysym)
 #ifndef HAVE_X11R5
 #ifdef XK_Mode_switch
@@ -11129,22 +11075,40 @@ XTread_socket (sd, bufp, numchars, expected)
 			     Text Cursor
  ***********************************************************************/
 
-/* Note if the text cursor of window W has been overwritten by a
+/* Notice if the text cursor of window W has been overwritten by a
    drawing operation that outputs N glyphs starting at HPOS in the
-   line given by output_cursor.vpos.  N < 0 means all the rest of the
-   line after HPOS has been written.  */
+   line given by output_cursor.vpos.
+
+   N < 0 means all the rest of the line after HPOS has been
+   written.  */
 
 static void
-note_overwritten_text_cursor (w, hpos, n)
+notice_overwritten_cursor (w, hpos, n)
      struct window *w;
      int hpos, n;
 {
   if (updated_area == TEXT_AREA
       && output_cursor.vpos == w->phys_cursor.vpos
-      && hpos <= w->phys_cursor.hpos
-      && (n < 0
-	  || hpos + n > w->phys_cursor.hpos))
-    w->phys_cursor_on_p = 0;
+      && output_cursor.x <= w->phys_cursor.x
+      && w->phys_cursor_on_p)
+    {
+      if (n < 0)
+	w->phys_cursor_on_p = 0;
+      else
+	{
+	  /* It depends on the width of the N glyphs written at HPOS
+	     if the cursor has been overwritten or not.  */
+	  struct glyph *glyph = &updated_row->glyphs[TEXT_AREA][hpos];
+	  struct glyph *end = glyph + n;
+	  int width = 0;
+
+	  for (; glyph < end; ++glyph)
+	    width += glyph->pixel_width;
+
+	  if (output_cursor.x + width > w->phys_cursor.x)
+	    w->phys_cursor_on_p = 0;
+	}
+    }
 }
 
 
@@ -11931,21 +11895,6 @@ x_connection_signal (signalnum)	/* If we don't have an argument, */
 			  Handling X errors
  ************************************************************************/
 
-/* Error message passed to x_connection_closed.  */
-
-static char *error_msg;
-
-/* Function installed as fatal_error_signal_hook.in
-   x_connection_closed.  Print the X error message, and exit normally,
-   instead of dumping core when XtCloseDisplay fails.  */
-
-static void
-x_fatal_error_signal ()
-{
-  fprintf (stderr, "%s\n", error_msg);
-  exit (70);
-}
-
 /* Handle the loss of connection to display DPY.  ERROR_MESSAGE is
    the text of an error message that lead to the connection loss.  */
 
@@ -11957,9 +11906,10 @@ x_connection_closed (dpy, error_message)
   struct x_display_info *dpyinfo = x_display_info_for_display (dpy);
   Lisp_Object frame, tail;
   int count;
+  char *msg;
   
-  error_msg = (char *) alloca (strlen (error_message) + 1);
-  strcpy (error_msg, error_message);
+  msg = (char *) alloca (strlen (error_message) + 1);
+  strcpy (msg, error_message);
   handling_signal = 0;
   
   /* Prevent being called recursively because of an error condition
@@ -11987,12 +11937,7 @@ x_connection_closed (dpy, error_message)
   /* If DPYINFO is null, this means we didn't open the display
      in the first place, so don't try to close it.  */
   if (dpyinfo)
-    {
-      extern void (*fatal_error_signal_hook) P_ ((void));
-      fatal_error_signal_hook = x_fatal_error_signal;
-      XtCloseDisplay (dpy);
-      fatal_error_signal_hook = NULL;
-    }
+    XtCloseDisplay (dpy);
 #endif
 
   /* Indicate that this display is dead.  */
@@ -12033,7 +11978,7 @@ x_connection_closed (dpy, error_message)
   
   if (x_display_list == 0)
     {
-      fprintf (stderr, "%s\n", error_msg);
+      fprintf (stderr, "%s\n", msg);
       shut_down_emacs (0, 0, Qnil);
       exit (70);
     }
@@ -12046,7 +11991,7 @@ x_connection_closed (dpy, error_message)
   TOTALLY_UNBLOCK_INPUT;
 
   clear_waiting_for_input ();
-  error ("%s", error_msg);
+  error ("%s", msg);
 }
 
 
@@ -13192,13 +13137,6 @@ x_free_frame_resources (f)
 	unload_color (f, f->output_data.x->scroll_bar_background_pixel);
       if (f->output_data.x->scroll_bar_foreground_pixel != -1)
 	unload_color (f, f->output_data.x->scroll_bar_foreground_pixel);
-#ifdef USE_TOOLKIT_SCROLL_BARS
-      /* Scrollbar shadow colors.  */
-      if (f->output_data.x->scroll_bar_top_shadow_pixel != -1)
-	unload_color (f, f->output_data.x->scroll_bar_top_shadow_pixel);
-      if (f->output_data.x->scroll_bar_bottom_shadow_pixel != -1)
-	unload_color (f, f->output_data.x->scroll_bar_bottom_shadow_pixel);
-#endif /* USE_TOOLKIT_SCROLL_BARS */
       if (f->output_data.x->white_relief.allocated_p)
 	unload_color (f, f->output_data.x->white_relief.pixel);
       if (f->output_data.x->black_relief.allocated_p)
