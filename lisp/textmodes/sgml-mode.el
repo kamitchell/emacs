@@ -95,17 +95,22 @@ This takes effect when first loading the sgml-mode library.")
     (define-key map "\C-c?" 'sgml-tag-help)
     (define-key map "\C-c8" 'sgml-name-8bit-mode)
     (define-key map "\C-c\C-v" 'sgml-validate)
-    (when sgml-quick-keys
-      (define-key map "&" 'sgml-name-char)
-      (define-key map "<" 'sgml-tag)
-      (define-key map " " 'sgml-auto-attributes)
-      (define-key map ">" 'sgml-maybe-end-tag)
-      (when (memq ?\" sgml-specials)
-        (define-key map "\"" 'sgml-name-self))
-      (when (memq ?' sgml-specials)
-        (define-key map "'" 'sgml-name-self)))
+    (if sgml-quick-keys
+	(progn
+	  (define-key map "&" 'sgml-name-char)
+	  (define-key map "<" 'sgml-tag)
+	  (define-key map " " 'sgml-auto-attributes)
+	  (define-key map ">" 'sgml-maybe-end-tag)
+	  (if (memq ?\" sgml-specials)
+	      (define-key map "\"" 'sgml-name-self))
+	  (if (memq ?' sgml-specials)
+	      (define-key map "'" 'sgml-name-self))))
     (define-key map (vector (make-char 'latin-iso8859-1))
       'sgml-maybe-name-self)
+    (let ((c 127)
+	  (map (nth 1 map)))
+      (while (< (setq c (1+ c)) 256)
+	(aset map c 'sgml-maybe-name-self)))
     (define-key map [menu-bar sgml] (cons "SGML" menu-map))
     (define-key menu-map [sgml-validate] '("Validate" . sgml-validate))
     (define-key menu-map [sgml-name-8bit-mode]
@@ -142,7 +147,7 @@ This takes effect when first loading the sgml-mode library.")
 
 
 (defcustom sgml-name-8bit-mode nil
-  "*When non-nil, insert 8 bit characters with their names."
+  "*When non-nil, insert non-ASCII characters as named entities."
   :type 'boolean
   :group 'sgml)
 
@@ -180,6 +185,20 @@ This takes effect when first loading the sgml-mode library.")
    "eth" "ntilde" "ograve" "oacute" "ocirc" "otilde" "ouml" "divide"
    "oslash" "ugrave" "uacute" "ucirc" "uuml" "yacute" "thorn" "yuml"]
   "Vector of symbolic character names without `&' and `;'.")
+
+(put 'sgml-table 'char-table-extra-slots 0)
+
+(defvar sgml-char-names-table
+  (let ((table (make-char-table 'sgml-table))
+	(i 32)
+	elt)
+    (while (< i 256)
+      (setq elt (aref sgml-char-names i))
+      (if elt (aset table (make-char 'latin-iso8859-1 i) elt))
+      (setq i (1+ i)))
+    table)
+  "A table for mapping non-ASCII characters into SGML entity names.
+Currently, only Latin-1 characters are supported.")
 
 
 ;; nsgmls is a free SGML parser in the SP suite available from
@@ -448,8 +467,9 @@ start tag, and the second `/' is the corresponding null end tag."
 
 (defun sgml-name-char (&optional char)
   "Insert a symbolic character name according to `sgml-char-names'.
-8 bit chars may be inserted with the meta key as in M-SPC for no break space,
-or M-- for a soft hyphen."
+Non-ASCII chars may be inserted either with the meta key, as in M-SPC for
+no-break space or M-- for a soft hyphen; or via an input method or
+encoded keyboard operation."
   (interactive "*")
   (insert ?&)
   (or char
@@ -458,34 +478,42 @@ or M-- for a soft hyphen."
   (insert char)
   (undo-boundary)
   (delete-backward-char 1)
-  (insert ?&
-	  (or (aref sgml-char-names char)
-	      (format "#%d" char))
-	  ?\;))
-
+  (cond
+   ((< char 256)
+    (insert ?&
+	    (or (aref sgml-char-names char)
+		(format "#%d" char))
+	    ?\;))
+   ((aref sgml-char-names-table char)
+    (insert ?& (aref sgml-char-names-table char) ?\;))
+   ((memq (char-charset char) '(mule-unicode-0100-24ff
+				mule-unicode-2500-33ff
+				mule-unicode-e000-ffff))
+    (insert (format "&#%d;" (encode-char char 'ucs))))
+   (t
+    (insert char))))
 
 (defun sgml-name-self ()
   "Insert a symbolic character name according to `sgml-char-names'."
   (interactive "*")
   (sgml-name-char last-command-char))
 
-
 (defun sgml-maybe-name-self ()
   "Insert a symbolic character name according to `sgml-char-names'."
   (interactive "*")
   (if sgml-name-8bit-mode
-      (sgml-name-char
-       (if (eq (char-charset last-command-char) 'latin-iso8859-1)
-	   (+ 128 (- last-command-char (make-char 'latin-iso8859-1)))
-	 last-command-char))
+      (let ((mc last-command-char))
+	(if (< mc 256)
+	    (setq mc (unibyte-char-to-multibyte mc)))
+	(or mc (setq mc last-command-char))
+	(sgml-name-char mc))
     (self-insert-command 1)))
 
-
 (defun sgml-name-8bit-mode ()
-  "Toggle insertion of 8 bit characters."
+  "Toggle whether to insert named entities instead of non-ASCII characters."
   (interactive)
   (setq sgml-name-8bit-mode (not sgml-name-8bit-mode))
-  (message "sgml name 8 bit mode  is now %s"
+  (message "sgml name entity mode is now %s"
 	   (if sgml-name-8bit-mode "ON" "OFF")))
 
 
@@ -508,8 +536,9 @@ skeleton-transformation RET upcase RET, or put this in your `.emacs':
     (if (string= "![" ,str)
 	(prog1 '(("") " [ " _ " ]]")
 	  (backward-char))
-      (unless (or (sgml-skip-close-p v2) ; (eq v2 t)
-                  (string-match "^[/!?]" ,str))
+      (if (or (eq v2 t)
+	      (string-match "^[/!?]" ,str))
+	  ()
 	(if (symbolp v2)
 	    ;; We go use `identity' to prevent skeleton from passing
 	    ;; `str' through skeleton-transformation a second time.
@@ -805,16 +834,13 @@ If this can't be done, return t."
 	   (match-end 0))
 	t)))
 
-(defun sgml-skip-close-p (obj)
-  (and (eq obj t) (not html-xhtml)))
-
 (defun sgml-value (alist)
   "Interactively insert value taken from attributerule ALIST.
 See `sgml-tag-alist' for info about attributerules.."
   (setq alist (cdr alist))
   (if (stringp (car alist))
       (insert "=\"" (car alist) ?\")
-    (if (sgml-skip-close-p (car alist)) ; (eq (car alist) t)
+    (if (eq (car alist) t)
 	(if (cdr alist)
 	    (progn
 	      (insert "=\"")
@@ -941,13 +967,6 @@ This takes effect when first loading the library.")
     (li . "o "))
   "Value of `sgml-display-text' for HTML mode.")
 
-
-(defcustom html-xhtml nil
-  "*When non-nil, tag insertion functions will be XHTML-compliant."
-  :type 'boolean
-  :version "21.2"
-  :group 'sgml)
-
 ;; should code exactly HTML 3 here when that is finished
 (defvar html-tag-alist
   (let* ((1-7 '(("1") ("2") ("3") ("4") ("5") ("6") ("7")))
@@ -963,8 +982,7 @@ This takes effect when first loading the library.")
 		 ("rel" ,@rel)
 		 ("rev" ,@rel)
 		 ("title")))
-	 (list '((nil \n ("List item: " "<li>" str
-                          (if html-xhtml "</li>") \n))))
+	 (list '((nil \n ("List item: " "<li>" str \n))))
 	 (cell `(t
 		 ,@align
 		 ("valign" ,@valign)
@@ -1038,8 +1056,7 @@ This takes effect when first loading the library.")
       ("div")
       ("dl" (nil \n
 		 ( "Term: "
-		   "<dt>" str (if html-xhtml "</dt>")
-                   "<dd>" _ (if html-xhtml "</dd>") \n)))
+		   "<dt>" str "<dd>" _ \n)))
       ("dt" (t _ "<dd>"))
       ("em")
       ;("fn" "id" "fn")  ; ???
@@ -1110,7 +1127,7 @@ This takes effect when first loading the library.")
     ("dir" . "Directory list (obsolete)")
     ("dl" . "Definition list")
     ("dt" . "Term to be definined")
-    ("em" . "Emphasised")
+    ("em" . "Emphasised") 
     ("embed" . "Embedded data in foreign format")
     ("fig" . "Figure")
     ("figa" . "Figure anchor")
@@ -1227,7 +1244,7 @@ To work around that, do:
   (setq sentence-end
 	(if sentence-end-double-space
 	    "[.?!][]\"')}]*\\(<[^>]*>\\)*\\($\\| $\\|\t\\|  \\)[ \t\n]*"
-
+	    
 	  "[.?!][]\"')}]*\\(<[^>]*>\\)*\\($\\| \\|\t\\)[ \t\n]*"))
   (setq sgml-tag-alist html-tag-alist
 	sgml-face-tag-alist html-face-tag-alist
@@ -1322,44 +1339,43 @@ Can be used as a value for `html-mode-hook'."
 (define-skeleton html-horizontal-rule
   "HTML horizontal rule tag."
   nil
-  (if html-xhtml "<hr/>" "<hr>") \n)
+  "<hr>" \n)
 
 (define-skeleton html-image
   "HTML image tag."
   nil
-  "<img src=\"" _ "\""
-  (if html-xhtml "/>" ">"))
+  "<img src=\"" _ "\">")
 
 (define-skeleton html-line
   "HTML line break tag."
   nil
-  (if html-xhtml "<br/>" "<br>") \n)
+  "<br>" \n)
 
 (define-skeleton html-ordered-list
   "HTML ordered list tags."
   nil
   "<ol>" \n
-  "<li>" _ (if html-xhtml "</li>") \n
+  "<li>" _ \n
   "</ol>")
 
 (define-skeleton html-unordered-list
   "HTML unordered list tags."
   nil
   "<ul>" \n
-  "<li>" _ (if html-xhtml "</li>") \n
+  "<li>" _ \n
   "</ul>")
 
 (define-skeleton html-list-item
   "HTML list item tag."
   nil
   (if (bolp) nil '\n)
-  "<li>" _ (if html-xhtml "</li>"))
+  "<li>")
 
 (define-skeleton html-paragraph
   "HTML paragraph tag."
   nil
   (if (bolp) nil ?\n)
-  \n "<p>" _ (if html-xhtml "</p>"))
+  \n "<p>")
 
 (define-skeleton html-checkboxes
   "Group of connected checkbox inputs."
@@ -1370,13 +1386,11 @@ Can be used as a value for `html-mode-hook'."
    "<input type=\"" (identity "checkbox") ; see comment above about identity
    "\" name=\"" (or v1 (setq v1 (skeleton-read "Name: ")))
    "\" value=\"" str ?\"
-   (when (y-or-n-p "Set \"checked\" attribute? ")
-     (funcall skeleton-transformation " checked"))
-   (if html-xhtml "/>" ">")
+   (if (y-or-n-p "Set \"checked\" attribute? ")
+        (funcall skeleton-transformation " checked")) ">"
    (skeleton-read "Text: " (capitalize str))
    (or v2 (setq v2 (if (y-or-n-p "Newline after text? ")
-		       (funcall skeleton-transformation
-                                (if html-xhtml "<br/>" "<br>"))
+		       (funcall skeleton-transformation "<br>")
 		     "")))
    \n))
 
@@ -1389,13 +1403,11 @@ Can be used as a value for `html-mode-hook'."
    "<input type=\"" (identity "radio") ; see comment above about identity
    "\" name=\"" (or (car v2) (setcar v2 (skeleton-read "Name: ")))
    "\" value=\"" str ?\"
-   (when (and (not v1) (setq v1 (y-or-n-p "Set \"checked\" attribute? ")))
-     (funcall skeleton-transformation " checked"))
-   (if html-xhtml "/>" ">")
+   (if (and (not v1) (setq v1 (y-or-n-p "Set \"checked\" attribute? ")))
+       (funcall skeleton-transformation " checked") ">")
    (skeleton-read "Text: " (capitalize str))
    (or (cdr v2) (setcdr v2 (if (y-or-n-p "Newline after text? ")
-			       (funcall skeleton-transformation
-                                        (if html-xhtml "<br/>" "<br>"))
+			       (funcall skeleton-transformation "<br>")
 			     "")))
    \n))
 
