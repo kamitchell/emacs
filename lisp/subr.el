@@ -153,7 +153,7 @@ If N is bigger than the length of X, return X."
 	   x))))
 
 (defun remove (elt seq)
-  "Return a copy of SEQ with all occurences of ELT removed.
+  "Return a copy of SEQ with all occurrences of ELT removed.
 SEQ must be a list, vector, or string.  The comparison is done with `equal'."
   (if (nlistp seq)
       ;; If SEQ isn't a list, there's no need to copy SEQ because
@@ -162,7 +162,7 @@ SEQ must be a list, vector, or string.  The comparison is done with `equal'."
     (delete elt (copy-sequence seq))))
 
 (defun remq (elt list)
-  "Return a copy of LIST with all occurences of ELT removed.
+  "Return a copy of LIST with all occurrences of ELT removed.
 The comparison is done with `eq'."
   (if (memq elt list)
       (delq elt (copy-sequence list))
@@ -396,7 +396,10 @@ of the map.  Note that AFTER must be an event type (like KEY), NOT a command
 \(like DEFINITION).
 
 If AFTER is t or omitted, the new binding goes at the end of the keymap.
-AFTER should be a single event type--a symbol or a character, not a sequence.
+
+KEY must contain just one event type--that is to say, it must be a
+string or vector of length 1, but AFTER should be a single event
+type--a symbol or a character, not a sequence.
 
 Bindings are always added before any inherited map.
 
@@ -404,19 +407,14 @@ The order of bindings in a keymap matters when it is used as a menu."
   (unless after (setq after t))
   (or (keymapp keymap)
       (signal 'wrong-type-argument (list 'keymapp keymap)))
-  (setq key
-	(if (<= (length key) 1) (aref key 0)
-	  (setq keymap (lookup-key keymap
-				   (apply 'vector
-					  (butlast (mapcar 'identity key)))))
-	  (aref key (1- (length key)))))
-  (let ((tail keymap) done inserted)
+  (if (> (length key) 1)
+      (error "multi-event key specified in `define-key-after'"))
+  (let ((tail keymap) done inserted
+	(first (aref key 0)))
     (while (and (not done) tail)
       ;; Delete any earlier bindings for the same key.
-      (if (eq (car-safe (car (cdr tail))) key)
+      (if (eq (car-safe (car (cdr tail))) first)
 	  (setcdr tail (cdr (cdr tail))))
-      ;; If we hit an included map, go down that one.
-      (if (keymapp (car tail)) (setq tail (car tail)))
       ;; When we reach AFTER's binding, insert the new binding after.
       ;; If we reach an inherited keymap, insert just before that.
       ;; If we reach the end of this keymap, insert at the end.
@@ -432,7 +430,7 @@ The order of bindings in a keymap matters when it is used as a menu."
 		(setq done t))
 	    ;; Don't insert more than once.
 	    (or inserted
-		(setcdr tail (cons (cons key definition) (cdr tail))))
+		(setcdr tail (cons (cons (aref key 0) definition) (cdr tail))))
 	    (setq inserted t)))
       (setq tail (cdr tail)))))
 
@@ -696,7 +694,7 @@ work in concert: running the hook actually runs all the hook
 functions listed in *either* the local value *or* the global value
 of the hook variable.
 
-This function works by making t a member of the buffer-local value,
+This function works by making `t' a member of the buffer-local value,
 which acts as a flag to run the hook functions in the default value as
 well.  This works for all normal hooks, but does not work for most
 non-normal hooks yet.  We will be changing the callers of non-normal
@@ -713,7 +711,6 @@ Do not use `make-local-variable' to make a hook variable buffer-local."
     (make-local-variable hook)
     (set hook (list t)))
   hook)
-(make-obsolete 'make-local-hook "Not necessary any more." "21.1")
 
 (defun add-hook (hook function &optional append local)
   "Add to the value of HOOK the function FUNCTION.
@@ -725,14 +722,15 @@ FUNCTION is added at the end.
 The optional fourth argument, LOCAL, if non-nil, says to modify
 the hook's buffer-local value rather than its default value.
 This makes the hook buffer-local if needed.
+To make a hook variable buffer-local, always use
+`make-local-hook', not `make-local-variable'.
 
 HOOK should be a symbol, and FUNCTION may be any valid function.  If
 HOOK is void, it is first set to nil.  If HOOK's value is a single
 function, it is changed to a list of functions."
   (or (boundp hook) (set hook nil))
   (or (default-boundp hook) (set-default hook nil))
-  (if local (unless (local-variable-if-set-p hook)
-	      (set (make-local-variable hook) (list t)))
+  (if local (unless (local-variable-if-set-p hook) (make-local-hook hook))
     ;; Detect the case where make-local-variable was used on a hook
     ;; and do what we used to do.
     (unless (and (consp (symbol-value hook)) (memq t (symbol-value hook)))
@@ -758,11 +756,12 @@ list of hooks to run in HOOK, then nothing is done.  See `add-hook'.
 
 The optional third argument, LOCAL, if non-nil, says to modify
 the hook's buffer-local value rather than its default value.
-This makes the hook buffer-local if needed."
+This makes the hook buffer-local if needed.
+To make a hook variable buffer-local, always use
+`make-local-hook', not `make-local-variable'."
   (or (boundp hook) (set hook nil))
   (or (default-boundp hook) (set-default hook nil))
-  (if local (unless (local-variable-if-set-p hook)
-	      (set (make-local-variable hook) (list t)))
+  (if local (unless (local-variable-if-set-p hook) (make-local-hook hook))
     ;; Detect the case where make-local-variable was used on a hook
     ;; and do what we used to do.
     (unless (and (consp (symbol-value hook)) (memq t (symbol-value hook)))
@@ -1062,38 +1061,6 @@ Wildcards and redirection are handled as usual in the shell."
    (t
     (start-process name buffer shell-file-name shell-command-switch
 		   (mapconcat 'identity args " ")))))
-
-(defun call-process-shell-command (command &optional infile buffer display
-					   &rest args)
-  "Execute the shell command COMMAND synchronously in separate process.
-The remaining arguments are optional.
-The program's input comes from file INFILE (nil means `/dev/null').
-Insert output in BUFFER before point; t means current buffer;
- nil for BUFFER means discard it; 0 means discard and don't wait.
-BUFFER can also have the form (REAL-BUFFER STDERR-FILE); in that case,
-REAL-BUFFER says what to do with standard output, as above,
-while STDERR-FILE says what to do with standard error in the child.
-STDERR-FILE may be nil (discard standard error output),
-t (mix it with ordinary output), or a file name string.
-
-Fourth arg DISPLAY non-nil means redisplay buffer as output is inserted.
-Remaining arguments are strings passed as additional arguments for COMMAND.
-Wildcards and redirection are handled as usual in the shell.
-
-If BUFFER is 0, `call-process-shell-command' returns immediately with value nil.
-Otherwise it waits for COMMAND to terminate and returns a numeric exit
-status or a signal description string.
-If you quit, the process is killed with SIGINT, or SIGKILL if you quit again."
-  (cond
-   ((eq system-type 'vax-vms)
-    (apply 'call-process command infile buffer display args))
-   ;; We used to use `exec' to replace the shell with the command,
-   ;; but that failed to handle (...) and semicolon, etc.
-   (t
-    (call-process shell-file-name
-		  infile buffer display
-		  shell-command-switch
-		  (mapconcat 'identity (cons command args) " ")))))
 
 (defmacro with-current-buffer (buffer &rest body)
   "Execute the forms in BODY with BUFFER as the current buffer.
@@ -1316,7 +1283,7 @@ and replace a sub-expression, e.g.
   ;; string looking for matches of REGEXP and building up a (reversed)
   ;; list MATCHES.  This comprises segments of STRING which weren't
   ;; matched interspersed with replacements for segments that were.
-  ;; [For a `large' number of replacements it's more efficient to
+  ;; [For a `large' number of replacments it's more efficient to
   ;; operate in a temporary buffer; we can't tell from the function's
   ;; args whether to choose the buffer-based implementation, though it
   ;; might be reasonable to do so for long enough STRING.]
@@ -1380,12 +1347,29 @@ and replace a sub-expression, e.g.
 (defun make-syntax-table (&optional oldtable)
   "Return a new syntax table.
 If OLDTABLE is non-nil, copy OLDTABLE.
-Otherwise, create a syntax table which inherits from the
-`standard-syntax-table'."
+Otherwise, create a syntax table which inherits
+all letters and control characters from the standard syntax table;
+other characters are copied from the standard syntax table."
   (if oldtable
       (copy-syntax-table oldtable)
-    (let ((table (make-char-table 'syntax-table nil)))
-      (set-char-table-parent table (standard-syntax-table))
+    (let ((table (copy-syntax-table))
+	  i)
+      (setq i 0)
+      (while (<= i 31)
+	(aset table i nil)
+	(setq i (1+ i)))
+      (setq i ?A)
+      (while (<= i ?Z)
+	(aset table i nil)
+	(setq i (1+ i)))
+      (setq i ?a)
+      (while (<= i ?z)
+	(aset table i nil)
+	(setq i (1+ i)))
+      (setq i 128)
+      (while (<= i 255)
+	(aset table i nil)
+	(setq i (1+ i)))
       table)))
 
 (defun add-to-invisibility-spec (arg)
@@ -1517,7 +1501,7 @@ If DIR-FLAG is non-nil, create a new empty directory instead of a file."
 		     (make-directory file)
 		   (write-region "" nil file nil 'silent nil 'excl))
 		 nil)
-	     (file-already-exists t))
+	    (file-already-exists t))
       ;; the file was somehow created by someone else between
       ;; `make-temp-name' and `write-region', let's try again.
       nil)
