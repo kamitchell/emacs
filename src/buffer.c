@@ -1444,7 +1444,9 @@ record_buffer (buf)
 }
 
 DEFUN ("set-buffer-major-mode", Fset_buffer_major_mode, Sset_buffer_major_mode, 1, 1, 0,
-  "Set an appropriate major mode for BUFFER, according to `default-major-mode'.\n\
+  "Set an appropriate major mode for BUFFER.\n\
+For the *scratch* buffer use `initial-major-mode', otherwise choose a\n\
+mode according to `default-major-mode'.\n\
 Use this function before selecting the buffer, since it may need to inspect\n\
 the current buffer's major mode.")
   (buffer)
@@ -1453,10 +1455,17 @@ the current buffer's major mode.")
   int count;
   Lisp_Object function;
 
-  function = buffer_defaults.major_mode;
-  if (NILP (function) && NILP (Fget (current_buffer->major_mode, Qmode_class)))
-    function = current_buffer->major_mode;
-
+  if (STRINGP (XBUFFER (buffer)->name)
+      && strcmp (XSTRING (XBUFFER (buffer)->name)->data, "*scratch*") == 0)
+    function = find_symbol_value (intern ("initial-major-mode"));
+  else
+    {
+      function = buffer_defaults.major_mode;
+      if (NILP (function)
+	  && NILP (Fget (current_buffer->major_mode, Qmode_class)))
+	function = current_buffer->major_mode;
+    }
+  
   if (NILP (function) || EQ (function, Qfundamental_mode))
     return Qnil;
 
@@ -1683,7 +1692,7 @@ set_buffer_internal_1 (b)
 
   for (tail = b->local_var_alist; !NILP (tail); tail = XCDR (tail))
     {
-      valcontents = SYMBOL_VALUE (XCAR (XCAR (tail)));
+      valcontents = XSYMBOL (XCAR (XCAR (tail)))->value;
       if ((BUFFER_LOCAL_VALUEP (valcontents)
 	   || SOME_BUFFER_LOCAL_VALUEP (valcontents))
 	  && (tem = XBUFFER_LOCAL_VALUE (valcontents)->realvalue,
@@ -1698,7 +1707,7 @@ set_buffer_internal_1 (b)
   if (old_buf)
     for (tail = old_buf->local_var_alist; !NILP (tail); tail = XCDR (tail))
       {
-	valcontents = SYMBOL_VALUE (XCAR (XCAR (tail)));
+	valcontents = XSYMBOL (XCAR (XCAR (tail)))->value;
 	if ((BUFFER_LOCAL_VALUEP (valcontents)
 	     || SOME_BUFFER_LOCAL_VALUEP (valcontents))
 	    && (tem = XBUFFER_LOCAL_VALUE (valcontents)->realvalue,
@@ -2260,26 +2269,26 @@ swap_out_buffer_local_variables (b)
       sym = XCAR (XCAR (alist));
 
       /* Need not do anything if some other buffer's binding is now encached.  */
-      tem = XBUFFER_LOCAL_VALUE (SYMBOL_VALUE (sym))->buffer;
+      tem = XBUFFER_LOCAL_VALUE (XSYMBOL (sym)->value)->buffer;
       if (BUFFERP (tem) && XBUFFER (tem) == current_buffer)
 	{
 	  /* Symbol is set up for this buffer's old local value.
 	     Set it up for the current buffer with the default value.  */
 
-	  tem = XBUFFER_LOCAL_VALUE (SYMBOL_VALUE (sym))->cdr;
+	  tem = XBUFFER_LOCAL_VALUE (XSYMBOL (sym)->value)->cdr;
 	  /* Store the symbol's current value into the alist entry
 	     it is currently set up for.  This is so that, if the
 	     local is marked permanent, and we make it local again
 	     later in Fkill_all_local_variables, we don't lose the value.  */
 	  XCDR (XCAR (tem))
-	    = do_symval_forwarding (XBUFFER_LOCAL_VALUE (SYMBOL_VALUE (sym))->realvalue);
+	    = do_symval_forwarding (XBUFFER_LOCAL_VALUE (XSYMBOL (sym)->value)->realvalue);
 	  /* Switch to the symbol's default-value alist entry.  */
 	  XCAR (tem) = tem;
 	  /* Mark it as current for buffer B.  */
-	  XBUFFER_LOCAL_VALUE (SYMBOL_VALUE (sym))->buffer = buffer;
+	  XBUFFER_LOCAL_VALUE (XSYMBOL (sym)->value)->buffer = buffer;
 	  /* Store the current value into any forwarding in the symbol.  */
 	  store_symval_forwarding (sym,
-				   XBUFFER_LOCAL_VALUE (SYMBOL_VALUE (sym))->realvalue,
+				   XBUFFER_LOCAL_VALUE (XSYMBOL (sym)->value)->realvalue,
 				   XCDR (tem), NULL);
 	}
     }
