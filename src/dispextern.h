@@ -931,15 +931,15 @@ extern struct glyph_row scratch_glyph_row;
    selected_window, this macro needs three arguments: SELW which is
    compared against the current value of selected_window, MBW which is
    compared against minibuf_window (if SELW doesn't match), and SCRW
-   which is compared against minibuf_selected_window (if MBW matches).  */
+   which is compared against Vminibuf_selected_window (if MBW matches).  */
 
 #define CURRENT_MODE_LINE_FACE_ID_3(SELW, MBW, SCRW)		\
      ((!mode_line_in_non_selected_windows			\
        || (SELW) == XWINDOW (selected_window)			\
        || (minibuf_level > 0					\
-           && !NILP (minibuf_selected_window)			\
+           && !NILP (Vminibuf_selected_window)			\
            && (MBW) == XWINDOW (minibuf_window)			\
-           && (SCRW) == XWINDOW (minibuf_selected_window)))	\
+           && (SCRW) == XWINDOW (Vminibuf_selected_window)))	\
       ? MODE_LINE_FACE_ID					\
       : MODE_LINE_INACTIVE_FACE_ID)
 
@@ -2293,9 +2293,12 @@ int face_at_string_position P_ ((struct window *, Lisp_Object, int, int, int,
 				 int, int *, enum face_id, int));
 int compute_char_face P_ ((struct frame *, int, Lisp_Object));
 void free_all_realized_faces P_ ((Lisp_Object));
+void free_realized_face P_ ((struct frame *, struct face *));
+
 extern Lisp_Object Qforeground_color, Qbackground_color;
 extern char unspecified_fg[], unspecified_bg[];
-void free_realized_multibyte_face P_ ((struct frame *, int));
+extern void check_face_attributes P_ ((Lisp_Object, Lisp_Object, Lisp_Object));
+extern int generate_ascii_font P_ ((Lisp_Object, Lisp_Object));
 
 /* Defined in xfns.c  */
 
