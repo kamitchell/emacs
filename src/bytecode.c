@@ -66,16 +66,16 @@ int byte_metering_on;
 
 #define METER_1(code) METER_2 (0, (code))
 
-#define METER_CODE(last_code, this_code)				\
-{									\
-  if (byte_metering_on)							\
-    {									\
-      if (METER_1 (this_code) < MOST_POSITIVE_FIXNUM)			\
-        METER_1 (this_code)++;						\
-      if (last_code							\
-	  && METER_2 (last_code, this_code) < MOST_POSITIVE_FIXNUM)	\
-        METER_2 (last_code, this_code)++;				\
-    }									\
+#define METER_CODE(last_code, this_code)			\
+{								\
+  if (byte_metering_on)						\
+    {								\
+      if (METER_1 (this_code) != ((1<<VALBITS)-1))		\
+        METER_1 (this_code)++;					\
+      if (last_code						\
+	  && METER_2 (last_code, this_code) != ((1<<VALBITS)-1))\
+        METER_2 (last_code, this_code)++;			\
+    }								\
 }
 
 #else /* no BYTE_CODE_METER */
@@ -520,7 +520,7 @@ If the third argument is incorrect, Emacs may crash.")
 	    v1 = vectorp[op];
 	    if (SYMBOLP (v1))
 	      {
-		v2 = SYMBOL_VALUE (v1);
+		v2 = XSYMBOL (v1)->value;
 		if (MISCP (v2) || EQ (v2, Qunbound))
 		  {
 		    BEFORE_POTENTIAL_GC ();
@@ -626,9 +626,16 @@ If the third argument is incorrect, Emacs may crash.")
 	    /* Inline the most common case.  */
 	    if (SYMBOLP (sym)
 		&& !EQ (val, Qunbound)
-		&& !XSYMBOL (sym)->indirect_variable
-		&& !XSYMBOL (sym)->constant
-		&& !MISCP (XSYMBOL (sym)->value))
+		&& !MISCP (XSYMBOL (sym)->value)
+		/* I think this should either be checked in the byte
+		   compiler, or there should be a flag indicating that
+		   a symbol might be constant in Lisp_Symbol, instead
+		   of checking this here over and over again. --gerd.  */
+		&& !EQ (sym, Qnil)
+		&& !EQ (sym, Qt)
+		&& !(XSYMBOL (sym)->name->data[0] == ':'
+		     && EQ (XSYMBOL (sym)->obarray, initial_obarray)
+		     && !EQ (val, sym)))
 	      XSYMBOL (sym)->value = val;
 	    else
 	      {
@@ -698,8 +705,8 @@ If the third argument is incorrect, Emacs may crash.")
 
 		v1 = TOP;
 		v2 = Fget (v1, Qbyte_code_meter);
-		if (INTEGERP (v2)
-		    && XINT (v2) < MOST_POSITIVE_FIXNUM)
+		if (FIXNUMP (v2)
+		    && XINT (v2) != ((1<<VALBITS)-1))
 		  {
 		    XSETINT (v2, XINT (v2) + 1);
 		    Fput (v1, Qbyte_code_meter, v2);
@@ -1119,7 +1126,7 @@ If the third argument is incorrect, Emacs may crash.")
 	  {
 	    Lisp_Object v1;
 	    v1 = TOP;
-	    if (INTEGERP (v1))
+	    if (FIXNUMP (v1))
 	      {
 		XSETINT (v1, XINT (v1) - 1);
 		TOP = v1;
@@ -1133,7 +1140,7 @@ If the third argument is incorrect, Emacs may crash.")
 	  {
 	    Lisp_Object v1;
 	    v1 = TOP;
-	    if (INTEGERP (v1))
+	    if (FIXNUMP (v1))
 	      {
 		XSETINT (v1, XINT (v1) + 1);
 		TOP = v1;
@@ -1219,7 +1226,7 @@ If the third argument is incorrect, Emacs may crash.")
 	  {
 	    Lisp_Object v1;
 	    v1 = TOP;
-	    if (INTEGERP (v1))
+	    if (FIXNUMP (v1))
 	      {
 		XSETINT (v1, - XINT (v1));
 		TOP = v1;
@@ -1683,7 +1690,7 @@ If the third argument is incorrect, Emacs may crash.")
 	  break;
 
 	case Bintegerp:
-	  TOP = INTEGERP (TOP) ? Qt : Qnil;
+	  TOP = FIXNUMP (TOP) ? Qt : Qnil;
 	  break;
 
 #ifdef BYTE_CODE_SAFE
@@ -1747,12 +1754,11 @@ syms_of_bytecode ()
 
   DEFVAR_LISP ("byte-code-meter", &Vbyte_code_meter,
    "A vector of vectors which holds a histogram of byte-code usage.\n\
-\(aref (aref byte-code-meter 0) CODE) indicates how many times the byte\n\
+(aref (aref byte-code-meter 0) CODE) indicates how many times the byte\n\
 opcode CODE has been executed.\n\
-\(aref (aref byte-code-meter CODE1) CODE2), where CODE1 is not 0,\n\
+(aref (aref byte-code-meter CODE1) CODE2), where CODE1 is not 0,\n\
 indicates how many times the byte opcodes CODE1 and CODE2 have been\n\
 executed in succession.");
-  
   DEFVAR_BOOL ("byte-metering-on", &byte_metering_on,
    "If non-nil, keep profiling information on byte code usage.\n\
 The variable byte-code-meter indicates how often each byte opcode is used.\n\
@@ -1760,14 +1766,14 @@ If a symbol has a property named `byte-code-meter' whose value is an\n\
 integer, it is incremented each time that symbol's function is called.");
 
   byte_metering_on = 0;
-  Vbyte_code_meter = Fmake_vector (make_number (256), make_number (0));
+  Vbyte_code_meter = Fmake_vector (make_fixnum (256), make_fixnum (0));
   Qbyte_code_meter = intern ("byte-code-meter");
   staticpro (&Qbyte_code_meter);
   {
     int i = 256;
     while (i--)
       XVECTOR (Vbyte_code_meter)->contents[i] =
-	Fmake_vector (make_number (256), make_number (0));
+	Fmake_vector (make_fixnum (256), make_fixnum (0));
   }
 #endif
 }
