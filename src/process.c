@@ -1,6 +1,6 @@
 /* Asynchronous subprocess control for GNU Emacs.
-   Copyright (C) 1985, 86, 87, 88, 93, 94, 95, 96, 98, 1999,
-      2001, 2002 Free Software Foundation, Inc.
+   Copyright (C) 1985, 86, 87, 88, 93, 94, 95, 96, 98, 1999, 2001
+      Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -98,7 +98,7 @@ Boston, MA 02111-1307, USA.  */
 #include "lisp.h"
 #include "window.h"
 #include "buffer.h"
-#include "charset.h"
+#include "character.h"
 #include "coding.h"
 #include "process.h"
 #include "termhooks.h"
@@ -112,8 +112,7 @@ Boston, MA 02111-1307, USA.  */
 #include "atimer.h"
 
 Lisp_Object Qprocessp;
-Lisp_Object Qrun, Qstop, Qsignal;
-Lisp_Object Qopen, Qclosed, Qconnect, Qfailed;
+Lisp_Object Qrun, Qstop, Qsignal, Qopen, Qclosed;
 Lisp_Object Qlast_nonmenu_event;
 /* Qexit is declared and initialized in eval.c.  */
 
@@ -174,30 +173,6 @@ int process_tick;
 /* Number of events for which the user or sentinel has been notified.  */
 int update_tick;
 
-/* Define NON_BLOCKING_CONNECT if we can support non-blocking connects.  */
-
-#ifdef BROKEN_NON_BLOCKING_CONNECT
-#undef NON_BLOCKING_CONNECT
-#else
-#ifndef NON_BLOCKING_CONNECT
-#ifdef HAVE_SOCKETS
-#ifdef HAVE_SELECT
-#if defined (HAVE_GETPEERNAME) || defined (GNU_LINUX)
-#if defined (O_NONBLOCK) || defined (O_NDELAY)
-#if defined (EWOULDBLOCK) || defined (EINPROGRESS)
-#define NON_BLOCKING_CONNECT
-#endif /* EWOULDBLOCK || EINPROGRESS */
-#endif /* O_NONBLOCK || O_NDELAY */
-#endif /* HAVE_GETPEERNAME || GNU_LINUX */
-#endif /* HAVE_SELECT */
-#endif /* HAVE_SOCKETS */
-#endif /* NON_BLOCKING_CONNECT */
-#endif /* BROKEN_NON_BLOCKING_CONNECT */
-
-#ifdef TERM
-#undef NON_BLOCKING_CONNECT
-#endif
-
 #include "sysselect.h"
 
 extern int keyboard_bit_set P_ ((SELECT_TYPE *));
@@ -219,15 +194,6 @@ static SELECT_TYPE non_keyboard_wait_mask;
 /* Mask that excludes process input descriptor (s).  */
 
 static SELECT_TYPE non_process_wait_mask;
-
-/* Mask of bits indicating the descriptors that we wait for connect to
-   complete on.  Once they complete, they are removed from this mask
-   and added to the input_wait_mask and non_keyboard_wait_mask.  */
-
-static SELECT_TYPE connect_wait_mask;
-
-/* Number of bits set in connect_wait_mask.  */
-static int num_pending_connects;
 
 /* The largest descriptor currently in use for a process object.  */
 static int max_process_desc;
@@ -258,7 +224,6 @@ static struct coding_system *proc_decode_coding_system[MAXDESC];
 static struct coding_system *proc_encode_coding_system[MAXDESC];
 
 static Lisp_Object get_process ();
-static void exec_sentinel ();
 
 extern EMACS_TIME timer_check ();
 extern int timers_run;
@@ -368,13 +333,6 @@ status_message (status)
       string = Fnumber_to_string (make_number (code));
       string2 = build_string (coredump ? " (core dumped)\n" : "\n");
       return concat2 (build_string ("exited abnormally with code "),
-		      concat2 (string, string2));
-    }
-  else if (EQ (symbol, Qfailed))
-    {
-      string = Fnumber_to_string (make_number (code));
-      string2 = build_string ("\n");
-      return concat2 (build_string ("failed with code "),
 		      concat2 (string, string2));
     }
   else
@@ -636,8 +594,6 @@ exit -- for a process that has exited.
 signal -- for a process that has got a fatal signal.
 open -- for a network stream connection that is open.
 closed -- for a network stream connection that is closed.
-connect -- when waiting for a non-blocking connection to complete.
-failed -- when a non-blocking connection has failed.
 nil -- if arg is a process name and no such process exists.
 PROCESS may be a process, a buffer, the name of a process, or
 nil, indicating the current buffer's process.  */)
@@ -1785,37 +1741,28 @@ create_process (process, new_argv, current_dir)
    deactivate and close it via delete-process */
 
 DEFUN ("open-network-stream", Fopen_network_stream, Sopen_network_stream, 
-       4, 7, 0, 
+       4, 4, 0, 
        doc: /* Open a TCP connection for a service to a host.
 Returns a subprocess-object to represent the connection.
-Returns nil if a non-blocking connect is attempted on a system which
-cannot support that; in that case, the caller should attempt a
-normal connect instead.
-
 Input and output work as for subprocesses; `delete-process' closes it.
-Args are NAME BUFFER HOST SERVICE FILTER SENTINEL NON-BLOCKING.
+Args are NAME BUFFER HOST SERVICE.
 NAME is name for process.  It is modified if necessary to make it unique.
 BUFFER is the buffer (or buffer-name) to associate with the process.
  Process output goes at end of that buffer, unless you specify
  an output stream or filter function to handle the output.
  BUFFER may be also nil, meaning that this process is not associated
- with any buffer.
-HOST is name of the host to connect to, or its IP address.
-SERVICE is name of the service desired, or an integer specifying a
- port number to connect to.   
-FILTER and SENTINEL are optional args specifying the filter and
- sentinel functions associated with the network stream.
-NON-BLOCKING is optional arg requesting an non-blocking connect.
- When non-nil, open-network-stream will return immediately without
- waiting for the connection to be made.  Instead, the sentinel function
- will be called with second matching "open" (if successful) or
- "failed" when the connect completes.  */)
-     (name, buffer, host, service, filter, sentinel, non_blocking)
-      Lisp_Object name, buffer, host, service, filter, sentinel, non_blocking;
+ with any buffer
+Third arg is name of the host to connect to, or its IP address.
+Fourth arg SERVICE is name of the service desired, or an integer
+specifying a port number to connect to.  */)
+     (name, buffer, host, service)
+      Lisp_Object name, buffer, host, service;
 {
   Lisp_Object proc;
 #ifdef HAVE_GETADDRINFO
   struct addrinfo hints, *res, *lres;
+  int ret = 0;
+  int xerrno = 0;
   char *portstring, portbuf[128];
 #else /* HAVE_GETADDRINFO */
   struct sockaddr_in address;
@@ -1824,43 +1771,19 @@ NON-BLOCKING is optional arg requesting an non-blocking connect.
   char *(addr_list[2]);
   IN_ADDR numeric_addr;
   int port;
-  struct _emacs_addrinfo
-  {
-    int ai_family;
-    int ai_socktype;
-    int ai_protocol;
-    int ai_addrlen;
-    struct sockaddr *ai_addr;
-    struct _emacs_addrinfo *ai_next;
-  } ai, *res, *lres;
 #endif /* HAVE_GETADDRINFO */
-  int ret = 0;
-  int xerrno = 0;
   int s = -1, outch, inch;
-  struct gcpro gcpro1, gcpro2, gcpro3, gcpro4, gcpro5;
+  struct gcpro gcpro1, gcpro2, gcpro3, gcpro4;
   int retry = 0;
   int count = specpdl_ptr - specpdl;
   int count1;
-  int is_non_blocking = 0;
-
-  if (!NILP (non_blocking))
-    {
-#ifndef NON_BLOCKING_CONNECT
-      return Qnil;
-#else
-      non_blocking = Qt;  /* Instead of GCPRO */
-      is_non_blocking = 1;
-#endif
-    }
 
 #ifdef WINDOWSNT
   /* Ensure socket support is loaded if available. */
   init_winsock (TRUE);
 #endif
 
-  /* Can only GCPRO 5 variables */
-  sentinel = Fcons (sentinel, filter);
-  GCPRO5 (name, buffer, host, service, sentinel);
+  GCPRO4 (name, buffer, host, service);
   CHECK_STRING (name);
   CHECK_STRING (host);
 
@@ -1918,6 +1841,87 @@ NON-BLOCKING is optional arg requesting an non-blocking connect.
 #endif
   immediate_quit = 0;
 
+  /* Do this in case we never enter the for-loop below.  */
+  count1 = specpdl_ptr - specpdl;
+  s = -1;
+
+  for (lres = res; lres; lres = lres->ai_next)
+    {
+      s = socket (lres->ai_family, lres->ai_socktype, lres->ai_protocol);
+      if (s < 0)
+	{
+	  xerrno = errno;
+	  continue;
+	}
+
+      /* Kernel bugs (on Ultrix at least) cause lossage (not just EINTR)
+	 when connect is interrupted.  So let's not let it get interrupted.
+	 Note we do not turn off polling, because polling is only used
+	 when not interrupt_input, and thus not normally used on the systems
+	 which have this bug.  On systems which use polling, there's no way
+	 to quit if polling is turned off.  */
+      if (interrupt_input)
+	unrequest_sigio ();
+
+      /* Make us close S if quit.  */
+      count1 = specpdl_ptr - specpdl;
+      record_unwind_protect (close_file_unwind, make_number (s));
+
+    loop:
+
+      immediate_quit = 1;
+      QUIT;
+
+      /* This turns off all alarm-based interrupts; the
+	 bind_polling_period call above doesn't always turn all the
+	 short-interval ones off, especially if interrupt_input is
+	 set.
+
+	 It'd be nice to be able to control the connect timeout
+	 though.  Would non-blocking connect calls be portable?  */
+      turn_on_atimers (0);
+      ret = connect (s, lres->ai_addr, lres->ai_addrlen);
+      xerrno = errno;
+      turn_on_atimers (1);
+
+      if (ret == 0 || xerrno == EISCONN)
+	/* The unwind-protect will be discarded afterwards.
+	   Likewise for immediate_quit.  */
+	break;
+
+      immediate_quit = 0;
+
+      if (xerrno == EINTR)
+	goto loop;
+      if (xerrno == EADDRINUSE && retry < 20)
+	{
+	  /* A delay here is needed on some FreeBSD systems,
+	     and it is harmless, since this retrying takes time anyway
+	     and should be infrequent.  */
+	  Fsleep_for (make_number (1), Qnil);
+	  retry++;
+	  goto loop;
+	}
+
+      /* Discard the unwind protect closing S.  */
+      specpdl_ptr = specpdl + count1;
+      count1 = specpdl_ptr - specpdl;
+      
+      emacs_close (s);
+      s = -1;
+    }
+
+  freeaddrinfo (res);
+  if (s < 0)
+    {
+      if (interrupt_input)
+	request_sigio ();
+
+      errno = xerrno;
+      report_file_error ("connection failed",
+			 Fcons (host, Fcons (name, Qnil)));
+    }
+  
 #else /* not HAVE_GETADDRINFO */
 
   while (1)
@@ -1969,109 +1973,37 @@ NON-BLOCKING is optional arg requesting an non-blocking connect.
   address.sin_family = host_info_ptr->h_addrtype;
   address.sin_port = port;
 
-  /* Emulate HAVE_GETADDRINFO for the loop over `res' below.  */
-  ai.ai_family = host_info_ptr->h_addrtype;
-  ai.ai_socktype = SOCK_STREAM;
-  ai.ai_protocol = 0;
-  ai.ai_addr = (struct sockaddr *) &address;
-  ai.ai_addrlen = sizeof address;
-  ai.ai_next = NULL;
-  res = &ai;
-#endif /* not HAVE_GETADDRINFO */
+  s = socket (host_info_ptr->h_addrtype, SOCK_STREAM, 0);
+  if (s < 0) 
+    report_file_error ("error creating socket", Fcons (name, Qnil));
 
-  /* Do this in case we never enter the for-loop below.  */
   count1 = specpdl_ptr - specpdl;
-  s = -1;
+  record_unwind_protect (close_file_unwind, make_number (s));
 
-  for (lres = res; lres; lres = lres->ai_next)
+  /* Kernel bugs (on Ultrix at least) cause lossage (not just EINTR)
+     when connect is interrupted.  So let's not let it get interrupted.
+     Note we do not turn off polling, because polling is only used
+     when not interrupt_input, and thus not normally used on the systems
+     which have this bug.  On systems which use polling, there's no way
+     to quit if polling is turned off.  */
+  if (interrupt_input)
+    unrequest_sigio ();
+
+ loop:
+
+  immediate_quit = 1;
+  QUIT;
+
+  if (connect (s, (struct sockaddr *) &address, sizeof address) == -1
+      && errno != EISCONN)
     {
-      s = socket (lres->ai_family, lres->ai_socktype, lres->ai_protocol);
-      if (s < 0)
-	{
-	  xerrno = errno;
-	  continue;
-	}
-
-#ifdef NON_BLOCKING_CONNECT
-      if (is_non_blocking)
-	{
-#ifdef O_NONBLOCK
-	  ret = fcntl (s, F_SETFL, O_NONBLOCK);
-#else
-	  ret = fcntl (s, F_SETFL, O_NDELAY);
-#endif
-	  if (ret < 0)
-	    {
-	      xerrno = errno;
-	      emacs_close (s);
-	      s = -1;
-	      continue;
-	    }
-	}
-#endif
-
-      /* Kernel bugs (on Ultrix at least) cause lossage (not just EINTR)
-	 when connect is interrupted.  So let's not let it get interrupted.
-	 Note we do not turn off polling, because polling is only used
-	 when not interrupt_input, and thus not normally used on the systems
-	 which have this bug.  On systems which use polling, there's no way
-	 to quit if polling is turned off.  */
-      if (interrupt_input)
-	unrequest_sigio ();
-
-      /* Make us close S if quit.  */
-      count1 = specpdl_ptr - specpdl;
-      record_unwind_protect (close_file_unwind, make_number (s));
-
-    loop:
-
-      immediate_quit = 1;
-      QUIT;
-
-      /* This turns off all alarm-based interrupts; the
-	 bind_polling_period call above doesn't always turn all the
-	 short-interval ones off, especially if interrupt_input is
-	 set.
-
-	 It'd be nice to be able to control the connect timeout
-	 though.  Would non-blocking connect calls be portable? 
-
-	 This used to be conditioned by HAVE_GETADDRINFO.  Why?  */
-
-      if (!is_non_blocking)
-	turn_on_atimers (0);
-
-      ret = connect (s, lres->ai_addr, lres->ai_addrlen);
-      xerrno = errno;
-
-      if (!is_non_blocking)
-	turn_on_atimers (1);
-
-      if (ret == 0 || xerrno == EISCONN)
-	{
-	  is_non_blocking = 0;
-	  /* The unwind-protect will be discarded afterwards.
-	     Likewise for immediate_quit.  */
-	  break;
-	}
-
-#ifdef NON_BLOCKING_CONNECT
-#ifdef EINPROGRESS
-      if (is_non_blocking && xerrno == EINPROGRESS)
-	break;
-#else
-#ifdef EWOULDBLOCK
-      if (is_non_blocking && xerrno == EWOULDBLOCK)
-	break;
-#endif
-#endif
-#endif
+      int xerrno = errno;
 
       immediate_quit = 0;
 
-      if (xerrno == EINTR)
+      if (errno == EINTR)
 	goto loop;
-      if (xerrno == EADDRINUSE && retry < 20)
+      if (errno == EADDRINUSE && retry < 20)
 	{
 	  /* A delay here is needed on some FreeBSD systems,
 	     and it is harmless, since this retrying takes time anyway
@@ -2081,40 +2013,21 @@ NON-BLOCKING is optional arg requesting an non-blocking connect.
 	  goto loop;
 	}
 
-      /* Discard the unwind protect closing S.  */
+      /* Discard the unwind protect.  */
       specpdl_ptr = specpdl + count1;
-      count1 = specpdl_ptr - specpdl;
-      
+
       emacs_close (s);
-      s = -1;
-    }
 
-#ifdef HAVE_GETADDRINFO
-  freeaddrinfo (res);
-#endif
-
-  if (s < 0)
-    {
       if (interrupt_input)
 	request_sigio ();
-
-      /* If non-blocking got this far - and failed - assume non-blocking is
-	 not supported after all.  This is probably a wrong assumption, but
-         the normal blocking calls to open-network-stream handles this error
-         better.  */
-      if (is_non_blocking)
-	{
-#ifdef POLL_FOR_INPUT
-	  unbind_to (count, Qnil);
-#endif
-	  return Qnil;
-	}
 
       errno = xerrno;
       report_file_error ("connection failed",
 			 Fcons (host, Fcons (name, Qnil)));
     }
   
+#endif /* not HAVE_GETADDRINFO */
+
   immediate_quit = 0;
 
   /* Discard the unwind protect, if any.  */
@@ -2155,35 +2068,15 @@ NON-BLOCKING is optional arg requesting an non-blocking connect.
   XPROCESS (proc)->childp = Fcons (host, Fcons (service, Qnil));
   XPROCESS (proc)->command_channel_p = Qnil;
   XPROCESS (proc)->buffer = buffer;
-  XPROCESS (proc)->sentinel = XCAR (sentinel);
-  XPROCESS (proc)->filter = XCDR (sentinel);
+  XPROCESS (proc)->sentinel = Qnil;
+  XPROCESS (proc)->filter = Qnil;
   XPROCESS (proc)->command = Qnil;
   XPROCESS (proc)->pid = Qnil;
   XSETINT (XPROCESS (proc)->infd, inch);
   XSETINT (XPROCESS (proc)->outfd, outch);
   XPROCESS (proc)->status = Qrun;
-
-#ifdef NON_BLOCKING_CONNECT
-  if (!NILP (non_blocking))
-    {
-      /* We may get here if connect did succeed immediately.  However,
-	 in that case, we still need to signal this like a non-blocking
-	 connection.  */
-      XPROCESS (proc)->status = Qconnect;
-      if (!FD_ISSET (inch, &connect_wait_mask))
-	{
-	  FD_SET (inch, &connect_wait_mask);
-	  num_pending_connects++;
-	}
-    }
-  else
-#endif
-    if (!EQ (XPROCESS (proc)->filter, Qt))
-      {
-	FD_SET (inch, &input_wait_mask);
-	FD_SET (inch, &non_keyboard_wait_mask);
-      }
-
+  FD_SET (inch, &input_wait_mask);
+  FD_SET (inch, &non_keyboard_wait_mask);
   if (inch > max_process_desc)
     max_process_desc = inch;
 
@@ -2301,12 +2194,6 @@ deactivate_process (proc)
       chan_process[inchannel] = Qnil;
       FD_CLR (inchannel, &input_wait_mask);
       FD_CLR (inchannel, &non_keyboard_wait_mask);
-      if (FD_ISSET (inchannel, &connect_wait_mask))
-	{
-	  FD_CLR (inchannel, &connect_wait_mask);
-	  if (--num_pending_connects < 0)
-	    abort ();
-	}
       if (inchannel == max_process_desc)
 	{
 	  int i;
@@ -2471,11 +2358,10 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 {
   register int channel, nfds;
   static SELECT_TYPE Available;
-  static SELECT_TYPE Connecting;
-  int check_connect, no_avail;
   int xerrno;
   Lisp_Object proc;
   EMACS_TIME timeout, end_time;
+  SELECT_TYPE Atemp;
   int wait_channel = -1;
   struct Lisp_Process *wait_proc = 0;
   int got_some_input = 0;
@@ -2484,7 +2370,6 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
   Lisp_Object wait_for_cell = Qnil;
 
   FD_ZERO (&Available);
-  FD_ZERO (&Connecting);
 
   /* If read_kbd is a process to watch, set wait_proc and wait_channel
      accordingly.  */
@@ -2626,15 +2511,11 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 	 timeout to get our attention.  */
       if (update_tick != process_tick && do_display)
 	{
-	  SELECT_TYPE Atemp, Ctemp;
-
 	  Atemp = input_wait_mask;
-	  Ctemp = connect_wait_mask;
 	  EMACS_SET_SECS_USECS (timeout, 0, 0);
 	  if ((select (max (max_process_desc, max_keyboard_desc) + 1,
-		       &Atemp, 
-		       (num_pending_connects > 0 ? &Ctemp : (SELECT_TYPE *)0),
-		       (SELECT_TYPE *)0, &timeout)
+		       &Atemp, (SELECT_TYPE *)0, (SELECT_TYPE *)0,
+		       &timeout)
 	       <= 0))
 	    {
 	      /* It's okay for us to do this and then continue with
@@ -2644,13 +2525,11 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 	    }
 	}
 
-      /* Don't wait for output from a non-running process.  Just
-         read whatever data has already been received.  */
+      /* Don't wait for output from a non-running process.  */
       if (wait_proc != 0 && !NILP (wait_proc->raw_status_low))
 	update_status (wait_proc);
       if (wait_proc != 0
-	  && ! EQ (wait_proc->status, Qrun)
-	  && ! EQ (wait_proc->status, Qconnect))
+	  && ! EQ (wait_proc->status, Qrun))
 	{
 	  int nread, total_nread = 0;
 
@@ -2689,18 +2568,11 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
       /* Wait till there is something to do */
 
       if (!NILP (wait_for_cell))
-	{
-	  Available = non_process_wait_mask;
-	  check_connect = 0;
-	}
+	Available = non_process_wait_mask;
+      else if (! XINT (read_kbd))
+	Available = non_keyboard_wait_mask;
       else
-	{
-	  if (! XINT (read_kbd))
-	    Available = non_keyboard_wait_mask;
-	  else
-	    Available = input_wait_mask;
-	  check_connect = (num_pending_connects > 0);
-	}
+	Available = input_wait_mask;
 
       /* If frame size has changed or the window is newly mapped,
 	 redisplay now, before we start to wait.  There is a race
@@ -2715,21 +2587,15 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 	    set_waiting_for_input (&timeout);
 	}
 
-      no_avail = 0;
       if (XINT (read_kbd) && detect_input_pending ())
 	{
 	  nfds = 0;
-	  no_avail = 1;
+	  FD_ZERO (&Available);
 	}
       else
-	{
-	  if (check_connect)
-	    Connecting = connect_wait_mask;
-	  nfds = select (max (max_process_desc, max_keyboard_desc) + 1,
-			 &Available, 
-			 (check_connect ? &Connecting : (SELECT_TYPE *)0),
-			 (SELECT_TYPE *)0, &timeout);
-	}
+	nfds = select (max (max_process_desc, max_keyboard_desc) + 1,
+		       &Available, (SELECT_TYPE *)0, (SELECT_TYPE *)0,
+		       &timeout);
 
       xerrno = errno;
 
@@ -2745,7 +2611,7 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
       if (nfds < 0)
 	{
 	  if (xerrno == EINTR)
-	    no_avail = 1;
+	    FD_ZERO (&Available);
 #ifdef ultrix
 	  /* Ultrix select seems to return ENOMEM when it is
 	     interrupted.  Treat it just like EINTR.  Bleah.  Note
@@ -2753,13 +2619,13 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 	     "__ultrix__"; the latter is only defined under GCC, but
 	     not by DEC's bundled CC.  -JimB  */
 	  else if (xerrno == ENOMEM)
-	    no_avail = 1;
+	    FD_ZERO (&Available);
 #endif
 #ifdef ALLIANT
 	  /* This happens for no known reason on ALLIANT.
 	     I am guessing that this is the right response. -- RMS.  */
 	  else if (xerrno == EFAULT)
-	    no_avail = 1;
+	    FD_ZERO (&Available);
 #endif
 	  else if (xerrno == EBADF)
 	    {
@@ -2771,7 +2637,7 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 		 So, SIGHUP is ignored (see def of PTY_TTY_NAME_SPRINTF
 		 in m/ibmrt-aix.h), and here we just ignore the select error.
 		 Cleanup occurs c/o status_notify after SIGCLD. */
-	      no_avail = 1; /* Cannot depend on values returned */
+	      FD_ZERO (&Available); /* Cannot depend on values returned */
 #else
 	      abort ();
 #endif
@@ -2779,16 +2645,9 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 	  else
 	    error ("select error: %s", emacs_strerror (xerrno));
 	}
-
-      if (no_avail)
-	{
-	  FD_ZERO (&Available);
-	  check_connect = 0;
-	}
-
 #if defined(sun) && !defined(USG5_4)
-      if (nfds > 0 && keyboard_bit_set (&Available)
-	  && interrupt_input)
+      else if (nfds > 0 && keyboard_bit_set (&Available)
+	       && interrupt_input)
 	/* System sometimes fails to deliver SIGIO.
 
 	   David J. Mackenzie says that Emacs doesn't compile under
@@ -2887,9 +2746,6 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 	do_pending_window_change (0);
 
       /* Check for data from a process.  */
-      if (no_avail || nfds == 0)
-	continue;
-
       /* Really FIRST_PROC_DESC should be 0 on Unix,
 	 but this is safer in the short run.  */
       for (channel = 0; channel <= max_process_desc; channel++)
@@ -2981,64 +2837,6 @@ wait_reading_process_input (time_limit, microsecs, read_kbd, do_display)
 		      = Fcons (Qexit, Fcons (make_number (256), Qnil));
 		}
 	    }
-#ifdef NON_BLOCKING_CONNECT	  
-	  if (check_connect && FD_ISSET (channel, &Connecting))
-	    {
-	      struct Lisp_Process *p;
-	      struct sockaddr pname;
-	      socklen_t pnamelen = sizeof(pname);
-
-	      FD_CLR (channel, &connect_wait_mask);
-	      if (--num_pending_connects < 0)
-		abort ();
-
-	      proc = chan_process[channel];
-	      if (NILP (proc))
-		continue;
-
-	      p = XPROCESS (proc);
-
-#ifdef GNU_LINUX
-	      /* getsockopt(,,SO_ERROR,,) is said to hang on some systems.
-	         So only use it on systems where it is known to work.  */
-	      {
-		socklen_t xlen = sizeof(xerrno);
-		if (getsockopt(channel, SOL_SOCKET, SO_ERROR, &xerrno, &xlen))
-		  xerrno = errno;
-	      }
-#else
-	      /* If connection failed, getpeername will fail.  */
-	      xerrno = 0;
-	      if (getpeername(channel, &pname, &pnamelen) < 0)
-		{
-		  /* Obtain connect failure code through error slippage.  */
-		  char dummy;
-		  xerrno = errno;
-		  if (errno == ENOTCONN && read(channel, &dummy, 1) < 0)
-		    xerrno = errno;
-		}
-#endif
-	      if (xerrno)
-		{
-		  XSETINT (p->tick, ++process_tick);
-		  p->status = Fcons (Qfailed, Fcons (make_number (xerrno), Qnil));
-		  deactivate_process (proc);
-		}
-	      else
-		{
-		  p->status = Qrun;
-		  /* Execute the sentinel here.  If we had relied on
-		     status_notify to do it later, it will read input
-		     from the process before calling the sentinel.  */
-		  exec_sentinel (proc, build_string ("open\n"));
-		  if (!EQ (p->filter, Qt))
-		    {
-		      FD_SET (XINT (p->infd), &input_wait_mask);
-		      FD_SET (XINT (p->infd), &non_keyboard_wait_mask);
-		    }
-		}
-	    }
-#endif /* NON_BLOCKING_CONNECT */
 	}			/* end for each file descriptor */
     }				/* end while exit conditions not met */
 
@@ -3213,17 +3011,17 @@ read_process_output (proc, channel)
 	 save the match data in a special nonrecursive fashion.  */
       running_asynch_code = 1;
 
-      text = decode_coding_string (make_unibyte_string (chars, nbytes),
-				   coding, 0);
+      decode_coding_c_string (coding, chars, nbytes, Qt);
+      text = coding->dst_object;
       if (NILP (buffer_defaults.enable_multibyte_characters))
 	/* We had better return unibyte string.  */
 	text = string_make_unibyte (text);
 
-      Vlast_coding_system_used = coding->symbol;
+      Vlast_coding_system_used = CODING_ID_NAME (coding->id);
       /* A new coding system might be found.  */
-      if (!EQ (p->decode_coding_system, coding->symbol))
+      if (!EQ (p->decode_coding_system, Vlast_coding_system_used))
 	{
-	  p->decode_coding_system = coding->symbol;
+	  p->decode_coding_system = Vlast_coding_system_used;
 
 	  /* Don't call setup_coding_system for
 	     proc_decode_coding_system[channel] here.  It is done in
@@ -3239,8 +3037,8 @@ read_process_output (proc, channel)
 	  if (NILP (p->encode_coding_system)
 	      && proc_encode_coding_system[XINT (p->outfd)])
 	    {
-	      p->encode_coding_system = coding->symbol;
-	      setup_coding_system (coding->symbol,
+	      p->encode_coding_system = Vlast_coding_system_used;
+	      setup_coding_system (p->encode_coding_system,
 				   proc_encode_coding_system[XINT (p->outfd)]);
 	    }
 	}
@@ -3330,19 +3128,19 @@ read_process_output (proc, channel)
       if (! (BEGV <= PT && PT <= ZV))
 	Fwiden ();
 
-      text = decode_coding_string (make_unibyte_string (chars, nbytes),
-				   coding, 0);
-      Vlast_coding_system_used = coding->symbol;
+      decode_coding_c_string (coding, chars, nbytes, Qt);
+      text = coding->dst_object;
+      Vlast_coding_system_used = CODING_ID_NAME (coding->id);
       /* A new coding system might be found.  See the comment in the
 	 similar code in the previous `if' block.  */
-      if (!EQ (p->decode_coding_system, coding->symbol))
+      if (!EQ (p->decode_coding_system, Vlast_coding_system_used))
 	{
-	  p->decode_coding_system = coding->symbol;
+	  p->decode_coding_system = Vlast_coding_system_used;
 	  if (NILP (p->encode_coding_system)
 	      && proc_encode_coding_system[XINT (p->outfd)])
 	    {
-	      p->encode_coding_system = coding->symbol;
-	      setup_coding_system (coding->symbol,
+	      p->encode_coding_system = Vlast_coding_system_used;
+	      setup_coding_system (p->encode_coding_system,
 				   proc_encode_coding_system[XINT (p->outfd)]);
 	    }
 	}
@@ -3471,86 +3269,77 @@ send_process (proc, buf, len, object)
 	   XSTRING (XPROCESS (proc)->name)->data);
 
   coding = proc_encode_coding_system[XINT (XPROCESS (proc)->outfd)];
-  Vlast_coding_system_used = coding->symbol;
+  Vlast_coding_system_used = CODING_ID_NAME (coding->id);
 
   if ((STRINGP (object) && STRING_MULTIBYTE (object))
       || (BUFFERP (object)
 	  && !NILP (XBUFFER (object)->enable_multibyte_characters))
       || EQ (object, Qt))
     {
-      if (!EQ (coding->symbol, XPROCESS (proc)->encode_coding_system))
+      if (!EQ (Vlast_coding_system_used,
+	       XPROCESS (proc)->encode_coding_system))
 	/* The coding system for encoding was changed to raw-text
 	   because we sent a unibyte text previously.  Now we are
 	   sending a multibyte text, thus we must encode it by the
 	   original coding system specified for the current
 	   process.  */
 	setup_coding_system (XPROCESS (proc)->encode_coding_system, coding);
-      /* src_multibyte should be set to 1 _after_ a call to
-	 setup_coding_system, since it resets src_multibyte to
-	 zero.  */
-      coding->src_multibyte = 1;
     }
   else
     {
       /* For sending a unibyte text, character code conversion should
 	 not take place but EOL conversion should.  So, setup raw-text
 	 or one of the subsidiary if we have not yet done it.  */
-      if (coding->type != coding_type_raw_text)
+      if (CODING_REQUIRE_ENCODING (coding))
 	{
 	  if (CODING_REQUIRE_FLUSHING (coding))
 	    {
 	      /* But, before changing the coding, we must flush out data.  */
 	      coding->mode |= CODING_MODE_LAST_BLOCK;
 	      send_process (proc, "", 0, Qt);
+	      coding->mode &= ~CODING_MODE_LAST_BLOCK;
 	    }
 	  coding->src_multibyte = 0;
-	  setup_raw_text_coding_system (coding);
+	  setup_coding_system (raw_text_coding_system
+			       (Vlast_coding_system_used),
+			       coding);
 	}
     }
   coding->dst_multibyte = 0;
 
   if (CODING_REQUIRE_ENCODING (coding))
     {
-      int require = encoding_buffer_size (coding, len);
-      int from_byte = -1, from = -1, to = -1;
-      unsigned char *temp_buf = NULL;
-
+      coding->dst_object = Qt;
       if (BUFFERP (object))
 	{
-	  from_byte = BUF_PTR_BYTE_POS (XBUFFER (object), buf);
-	  from = buf_bytepos_to_charpos (XBUFFER (object), from_byte);
-	  to = buf_bytepos_to_charpos (XBUFFER (object), from_byte + len);
+	  int from_byte, from, to;
+	  int save_pt, save_pt_byte;
+	  struct buffer *cur = current_buffer;
+
+	  set_buffer_internal (XBUFFER (object));
+	  save_pt = PT, save_pt_byte = PT_BYTE;
+
+	  from_byte = PTR_BYTE_POS (buf);
+	  from = BYTE_TO_CHAR (from_byte);
+	  to = BYTE_TO_CHAR (from_byte + len);
+	  TEMP_SET_PT_BOTH (from, from_byte);
+	  encode_coding_object (coding, object, from, from_byte,
+				to, from_byte + len, Qt);
+	  TEMP_SET_PT_BOTH (save_pt, save_pt_byte);
+	  set_buffer_internal (cur);
 	}
       else if (STRINGP (object))
 	{
-	  from_byte = buf - XSTRING (object)->data;
-	  from = string_byte_to_char (object, from_byte);
-	  to =  string_byte_to_char (object, from_byte + len);
+	  encode_coding_string (coding, object, 1);
 	}
-
-      if (coding->composing != COMPOSITION_DISABLED)
+      else
 	{
-	  if (from_byte >= 0)
-	    coding_save_composition (coding, from, to, object);
-	  else
-	    coding->composing = COMPOSITION_DISABLED;
+	  coding->dst_object = make_unibyte_string (buf, len);
+	  coding->produced = len;
 	}
 
-      if (STRING_BYTES (XSTRING (XPROCESS (proc)->encoding_buf)) < require)
-	XPROCESS (proc)->encoding_buf = make_uninit_string (require);
-
-      if (from_byte >= 0)
-	buf = (BUFFERP (object)
-	       ? BUF_BYTE_ADDRESS (XBUFFER (object), from_byte)
-	       : XSTRING (object)->data + from_byte);
-
-      object = XPROCESS (proc)->encoding_buf;
-      encode_coding (coding, (char *) buf, XSTRING (object)->data,
-		     len, STRING_BYTES (XSTRING (object)));
       len = coding->produced;
-      buf = XSTRING (object)->data;
-      if (temp_buf)
-	xfree (temp_buf);
+      buf = XSTRING (coding->dst_object)->data;
     }
 
 #ifdef VMS
@@ -4621,7 +4410,6 @@ status_notify ()
 
 	  /* If process is still active, read any output that remains.  */
 	  while (! EQ (p->filter, Qt)
-		 && ! EQ (p->status, Qconnect)
 		 && XINT (p->infd) >= 0
 		 && read_process_output (proc, XINT (p->infd)) > 0);
 
@@ -4856,10 +4644,6 @@ syms_of_process ()
   staticpro (&Qopen);
   Qclosed = intern ("closed");
   staticpro (&Qclosed);
-  Qconnect = intern ("connect");
-  staticpro (&Qconnect);
-  Qfailed = intern ("failed");
-  staticpro (&Qfailed);
 
   Qlast_nonmenu_event = intern ("last-nonmenu-event");
   staticpro (&Qlast_nonmenu_event);
@@ -4933,7 +4717,7 @@ The value takes effect when `start-process' is called.  */);
 
 #include "lisp.h"
 #include "systime.h"
-#include "charset.h"
+#include "character.h"
 #include "coding.h"
 #include "termopts.h"
 #include "sysselect.h"
