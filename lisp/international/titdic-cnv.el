@@ -1,7 +1,10 @@
 ;;; titdic-cnv.el --- convert cxterm dictionary (TIT format) to Quail package -*- coding:iso-2022-7bit; -*-
 
 ;; Copyright (C) 1995 Electrotechnical Laboratory, JAPAN.
-;; Licensed to the Free Software Foundation.
+;;   Licensed to the Free Software Foundation.
+;; Copyright (C) 2003
+;;   National Institute of Advanced Industrial Science and Technology (AIST)
+;;   Registration Number H13PRO009
 
 ;; Keywords: Quail, TIT, cxterm
 
@@ -206,7 +209,7 @@ SPC, 6, 3, 4, or 7 specifing a tone (SPC:$(0?v(N(B, 6:$(0Dm(N(B, 3:$(0&9Vy
 
 ;; Return a value of the key in the current line.
 (defsubst tit-read-key-value ()
-  (if (looking-at "[^ \t\r\n]+")
+  (if (looking-at "[^ \t\n]+")
       (car (read-from-string (concat "\"" (match-string 0) "\"")))))
 
 ;; Return an appropriate quail-package filename from FILENAME (TIT
@@ -494,24 +497,19 @@ the generated Quail package is saved."
 	    (goto-char (point-min))
 	    (decode-coding-region (point-min) (point-max) coding-system))
 
+	  (set-buffer-multibyte t)
 	  ;; Set point the starting position of the body part.
 	  (goto-char (point-min))
 	  (if (not (search-forward "\nBEGIN" nil t))
 	      (error "TIT dictionary can't be decoded correctly"))
 
-	  ;; Process the header part in multibyte mode.
-	  (with-current-buffer standard-output
-	    (set-buffer-multibyte t))
-	  (set-buffer-multibyte t)
+	  ;; Process the header part.
 	  (forward-line 1)
 	  (narrow-to-region (point-min) (point))
 	  (tit-process-header filename)
 	  (widen)
 
-	  ;; Process the body part.  For speed, we turn off multibyte facility.
-	  (with-current-buffer standard-output
-	    (set-buffer-multibyte nil))
-	  (set-buffer-multibyte nil)
+	  ;; Process the body part
 	  (tit-process-body))))))
 
 ;;;###autoload
@@ -768,11 +766,6 @@ To get complete usage, invoke \"emacs -batch -f batch-titdic-convert -h\"."
     (insert "(quail-define-rules\n")
     (save-excursion
       (set-buffer dicbuf)
-      ;; Handle double CR line ends, which result when checking out of
-      ;; CVS on MS-Windows.
-      (goto-char (point-min))
-      (while (re-search-forward "\r\r$" nil t)
-	(replace-match ""))
       (goto-char (point-min))
       (search-forward "A440")
       (beginning-of-line)
@@ -1109,6 +1102,7 @@ the generated Quail package is saved."
       (error "%s does not exist" filename))
   (let ((tail quail-misc-package-ext-info)
 	(default-buffer-file-coding-system 'iso-2022-7bit)
+	(coding-system-for-write 'iso-2022-7bit)
 	slot
 	name title dicfile coding quailfile converter copyright
 	dicbuf)
@@ -1183,5 +1177,4 @@ to store generated Quail packages."
 ;; coding: iso-2022-7bit
 ;; End:
 
-;;; arch-tag: 8ad478b2-a985-4da2-b47f-d8ee5d7c24a3
 ;;; titdic-cnv.el ends here

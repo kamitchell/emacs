@@ -68,12 +68,11 @@ controlled by a separate variable, `mail-specify-envelope-from'."
 (defcustom mail-specify-envelope-from nil
   "*If non-nil, specify the envelope-from address when sending mail.
 The value used to specify it is whatever is found in
-the variable `mail-envelope-from', with `user-mail-address' as fallback.
+`mail-envelope-from', with `user-mail-address' as fallback.
 
 On most systems, specifying the envelope-from address is a
-privileged operation.  This variable affects sendmail and
-smtpmail -- if you use feedmail to send mail, see instead the
-variable `feedmail-deduce-envelope-from'."
+privileged operation.  This variable is only used if
+`send-mail-function' is set to `sendmail-send-it'."
   :version "21.1"
   :type 'boolean
   :group 'sendmail)
@@ -387,11 +386,10 @@ actually occur.")
 
 
 (defun sendmail-sync-aliases ()
-  (when mail-personal-alias-file
-    (let ((modtime (nth 5 (file-attributes mail-personal-alias-file))))
-      (or (equal mail-alias-modtime modtime)
-	  (setq mail-alias-modtime modtime
-		mail-aliases t)))))
+  (let ((modtime (nth 5 (file-attributes mail-personal-alias-file))))
+    (or (equal mail-alias-modtime modtime)
+	(setq mail-alias-modtime modtime
+	      mail-aliases t))))
 
 (defun mail-setup (to subject in-reply-to cc replybuffer actions)
   (or mail-default-reply-to
@@ -400,9 +398,8 @@ actually occur.")
   (if (eq mail-aliases t)
       (progn
 	(setq mail-aliases nil)
-	(when mail-personal-alias-file
-	  (if (file-exists-p mail-personal-alias-file)
-	      (build-mail-aliases)))))
+	(if (file-exists-p mail-personal-alias-file)
+	    (build-mail-aliases))))
   ;; Don't leave this around from a previous message.
   (kill-local-variable 'buffer-file-coding-system)
   ;; This doesn't work for enable-multibyte-characters.
@@ -969,7 +966,7 @@ external program defined by `sendmail-program'."
 			  (/= (point) (point-max)))
 		   selected-coding
 		   (setq charset
-			 (coding-system-get selected-coding 'mime-charset))
+			 (coding-system-get selected-coding :mime-charset))
 		   (goto-char delimline)
 		   (insert "MIME-version: 1.0\n"
 			   "Content-type: text/plain; charset="
@@ -1628,7 +1625,7 @@ The seventh argument ACTIONS is a list of actions to take
       (define-key (current-local-map) "v"
 	(lambda ()
 	  (interactive)
-	  (let ((coding-system-for-read 'emacs-mule-unix))
+	  (let ((coding-system-for-read 'utf-8-emacs-unix))
 	    (dired-view-file))))
       (define-key (current-local-map) "\C-c\C-c"
 	(lambda ()
@@ -1636,13 +1633,13 @@ The seventh argument ACTIONS is a list of actions to take
 	  (let ((fname (dired-get-filename))
 		;; Auto-saved files are written in the internal
 		;; representation, so they should be read accordingly.
-		(coding-system-for-read 'emacs-mule-unix))
+		(coding-system-for-read 'utf-8-emacs-unix))
 	    (switch-to-buffer-other-window "*mail*")
 	    (let ((buffer-read-only nil))
 	      (erase-buffer)
 	      (insert-file-contents fname nil)
 	      ;; insert-file-contents will set buffer-file-coding-system
-	      ;; to emacs-mule, which is probably not what they want to
+	      ;; to utf-8-emacs, which is probably not what they want to
 	      ;; use for sending the message.  But we don't know what
 	      ;; was its value before the buffer was killed or Emacs
 	      ;; crashed.  We therefore reset buffer-file-coding-system
@@ -1693,7 +1690,7 @@ you can move to one of them and type C-c C-c to recover that one."
 		     (buffer-coding buffer-file-coding-system)
 		     ;; Auto-save files are written in internal
 		     ;; representation of non-ASCII characters.
-		     (coding-system-for-read 'emacs-mule-unix))
+		     (coding-system-for-read 'utf-8-emacs-unix))
 		 (erase-buffer)
 		 (insert-file-contents file-name nil)
 		 (setq buffer-file-coding-system buffer-coding)))))
@@ -1727,5 +1724,4 @@ you can move to one of them and type C-c C-c to recover that one."
 
 (provide 'sendmail)
 
-;;; arch-tag: 48bc1025-d993-4d31-8d81-2a29491f0626
 ;;; sendmail.el ends here

@@ -10,7 +10,7 @@
 
 ;;; This version incorporates changes up to version 2.10 of the
 ;;; Zawinski-Furuseth compiler.
-(defconst byte-compile-version "$Revision: 2.136 $")
+(defconst byte-compile-version "$Revision: 2.134 $")
 
 ;; This file is part of GNU Emacs.
 
@@ -350,9 +350,6 @@ Elements of the list may be be:
 		      (const free-vars) (const unresolved)
 		      (const callargs) (const redefine)
 		      (const obsolete) (const noruntime) (const cl-functions))))
-
-(defvar byte-compile-not-obsolete-var nil
-  "If non-nil, this is a variable that shouldn't be reported as obsolete.")
 
 (defcustom byte-compile-generate-call-tree nil
   "*Non-nil means collect call-graph information when compiling.
@@ -769,7 +766,7 @@ otherwise pop it")
 	       (setcar (cdr bytes) (logand pc 255))
 	       (setcar bytes (lsh pc -8))))
 	(setq patchlist (cdr patchlist))))
-    (concat (nreverse bytes))))
+    (string-make-unibyte (concat (nreverse bytes)))))
 
 
 ;;; compile-time evaluation
@@ -985,7 +982,7 @@ Each function's symbol gets marked with the `byte-compile-noruntime' property."
 ;; Also log the current function and file if not already done.
 (defun byte-compile-log-warning (string &optional fill level)
   (let ((warning-prefix-function 'byte-compile-warning-prefix)
-	(warning-type-format "")
+	(warning-group-format "")
 	(warning-fill-prefix (if fill "    ")))
     (display-warning 'bytecomp string level "*Compile-Log*")))
 
@@ -1779,13 +1776,13 @@ With argument, insert value in current buffer after the form."
 	(delete-region (point) (progn (re-search-forward "^(")
 				      (beginning-of-line)
 				      (point)))
-	(insert ";;; This file contains multibyte non-ASCII characters\n"
-		";;; and therefore cannot be loaded into Emacs 19.\n")
-	;; Replace "19" or "19.29" with "20", twice.
+	(insert ";;; This file contains utf-8 non-ASCII characters\n"
+		";;; and therefore cannot be loaded into Emacs 21 or earlier.\n")
+	;; Replace "19" or "19.29" with "22", twice.
 	(re-search-forward "19\\(\\.[0-9]+\\)")
-	(replace-match "20")
+	(replace-match "22")
 	(re-search-forward "19\\(\\.[0-9]+\\)")
-	(replace-match "20")
+	(replace-match "22")
 	;; Now compensate for the change in size,
 	;; to make sure all positions in the file remain valid.
 	(setq delta (- (point-max) old-header-end))
@@ -1800,7 +1797,7 @@ With argument, insert value in current buffer after the form."
     (set-buffer outbuffer)
     (goto-char 1)
     ;; The magic number of .elc files is ";ELC", or 0x3B454C43.  After
-    ;; that is the file-format version number (18, 19 or 20) as a
+    ;; that is the file-format version number (18, 19, 20, or 22) as a
     ;; byte, followed by some nulls.  The primary motivation for doing
     ;; this is to get some binary characters up in the first line of
     ;; the file so that `diff' will simply say "Binary files differ"
@@ -1812,7 +1809,7 @@ With argument, insert value in current buffer after the form."
 
     (insert
      ";ELC"
-     (if (byte-compile-version-cond byte-compile-compatibility) 18 20)
+     (if (byte-compile-version-cond byte-compile-compatibility) 18 22)
      "\000\000\000\n"
      )
     (insert ";;; Compiled by "
@@ -1871,7 +1868,7 @@ With argument, insert value in current buffer after the form."
 	   ;; Insert semicolons as ballast, so that byte-compile-fix-header
 	   ;; can delete them so as to keep the buffer positions
 	   ;; constant for the actual compiled code.
-	   ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\n\n"))
+	   ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\n\n"))
       ;; Here if we want Emacs 18 compatibility.
       (when dynamic-docstrings
 	(error "Version-18 compatibility doesn't support dynamic doc strings"))
@@ -2708,8 +2705,7 @@ If FORM is a lambda or a macro, byte-compile it as a function."
        (if (symbolp var) "constant" "nonvariable")
        (prin1-to-string var))
     (if (and (get var 'byte-obsolete-variable)
-	     (memq 'obsolete byte-compile-warnings)
-	     (not (eq var byte-compile-not-obsolete-var)))
+	     (memq 'obsolete byte-compile-warnings))
 	(let* ((ob (get var 'byte-obsolete-variable))
 	       (when (cdr ob)))
 	  (byte-compile-warn "%s is an obsolete variable%s; %s" var
@@ -3241,6 +3237,8 @@ If FORM is a lambda or a macro, byte-compile it as a function."
 (byte-defop-compiler-1 mapc byte-compile-funarg)
 (byte-defop-compiler-1 maphash byte-compile-funarg)
 (byte-defop-compiler-1 map-char-table byte-compile-funarg)
+(byte-defop-compiler-1 map-char-table byte-compile-funarg-2)
+;; map-charset-chars should be funarg but has optional third arg
 (byte-defop-compiler-1 sort byte-compile-funarg-2)
 (byte-defop-compiler-1 let)
 (byte-defop-compiler-1 let*)
@@ -3612,14 +3610,13 @@ If FORM is a lambda or a macro, byte-compile it as a function."
 			     fun var string))
 	`(put ',var 'variable-documentation ,string))
       (if (cddr form)		; `value' provided
-	  (let ((byte-compile-not-obsolete-var var))
-	    (if (eq fun 'defconst)
-		;; `defconst' sets `var' unconditionally.
-		(let ((tmp (make-symbol "defconst-tmp-var")))
-		  `(funcall '(lambda (,tmp) (defconst ,var ,tmp))
-			    ,value))
-	      ;; `defvar' sets `var' only when unbound.
-	      `(if (not (default-boundp ',var)) (setq-default ,var ,value))))
+	  (if (eq fun 'defconst)
+	      ;; `defconst' sets `var' unconditionally.
+	      (let ((tmp (make-symbol "defconst-tmp-var")))
+		`(funcall '(lambda (,tmp) (defconst ,var ,tmp))
+			  ,value))
+	    ;; `defvar' sets `var' only when unbound.
+	    `(if (not (default-boundp ',var)) (setq-default ,var ,value)))
 	(when (eq fun 'defconst)
 	  ;; This will signal an appropriate error at runtime.
 	  `(eval ',form)))
@@ -4039,5 +4036,4 @@ For example, invoke `emacs -batch -f batch-byte-recompile-directory .'."
 
 (run-hooks 'bytecomp-load-hook)
 
-;;; arch-tag: 9c97b0f0-8745-4571-bfc3-8dceb677292a
 ;;; bytecomp.el ends here

@@ -2374,7 +2374,7 @@ The type name can then be used in `typecase', `check-type', etc."
 	    ((eq type 'real) `(numberp ,val))
 	    ((eq type 'fixnum) `(integerp ,val))
 	    ;; FIXME: Should `character' accept things like ?\C-\M-a ?  -stef
-	    ((memq type '(character string-char)) `(char-valid-p ,val))
+	    ((memq type '(character string-char)) `(characterp ,val))
 	    (t
 	     (let* ((name (symbol-name type))
 		    (namep (intern (concat name "p"))))
@@ -2657,5 +2657,4 @@ surrounded by (block NAME ...).
 ;;; byte-compile-warnings: (redefine callargs free-vars unresolved obsolete noruntime)
 ;;; End:
 
-;;; arch-tag: afd947a6-b553-4df1-bba5-000be6388f46
 ;;; cl-macs.el ends here

@@ -312,8 +312,6 @@ Keymap to display on minor modes.")
 
   (setq-default mode-line-position
     `((-3 . ,(propertize "%p" 'help-echo help-echo))
-      (size-indication-mode 
-       (8 ,(propertize " of %I" 'help-echo help-echo)))
       (line-number-mode
        ((column-number-mode
 	 (10 ,(propertize " (%l,%c)" 'help-echo help-echo))
@@ -627,12 +625,6 @@ language you are using."
 ;; that we will not need to keep permanently.
 (garbage-collect)
 
-;; Make all multibyte characters self-insert.
-(let ((l (generic-character-list))
-      (table (nth 1 global-map)))
-  (while l
-    (set-char-table-default table (car l) 'self-insert-command)
-    (setq l (cdr l))))
 
 (setq help-event-list '(help f1))
 
@@ -1037,5 +1029,4 @@ language you are using."
 ;; no-update-autoloads: t
 ;; End:
 
-;;; arch-tag: 23b5c7e6-e47b-49ed-8c6c-ed213c5fffe0
 ;;; bindings.el ends here

@@ -1,5 +1,5 @@
 ;;; gnus-sum.el --- summary mode commands for Gnus
-;; Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001
+;; Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2003
 ;;        Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
@@ -9900,5 +9900,4 @@ returned."
 
 (run-hooks 'gnus-sum-load-hook)
 
-;;; arch-tag: 17c6748f-6d00-4d36-bf01-835c42f31235
 ;;; gnus-sum.el ends here

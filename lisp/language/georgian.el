@@ -1,6 +1,6 @@
 ;;; georgian.el --- language support for Georgian -*- no-byte-compile: t -*-
 
-;; Copyright (C) 2001  Free Software Foundation, Inc.
+;; Copyright (C) 2001, 2003  Free Software Foundation, Inc.
 
 ;; Author: Dave Love <fx@gnu.org>
 ;; Keywords: i18n
@@ -26,18 +26,27 @@
 
 ;;; Code:
 
+(define-coding-system 'georgian-ps
+  "Georgian PS encoding"
+  :coding-type 'charset
+  :mnemonic ?G
+  :charset-list '(georgian-ps))
+
+(define-coding-system 'georgian-academy
+  "Georgian Academy encoding"
+  :coding-type 'charset
+  :mnemonic ?G
+  :charset-list '(georgian-academy))
+
 (set-language-info-alist
  "Georgian" `((coding-system georgian-ps)
 	      (coding-priority georgian-ps)
 	      (input-method . "georgian")
-	      (features code-pages)
-	      (nonascii-translation . ,(get 'decode-georgian-ps
-					    'translation-table))
+	      (nonascii-translation . georgian-ps)
 	      (documentation . "Support for georgian-ps character set."))
  '("European"))				; fixme: is this appropriate for
 					; a non-Latin script?
 
 (provide 'georgian)
 
-;;; arch-tag: 15499fbb-26d4-4a13-9d78-135eef7d32f5
 ;;; georgian.el ends here

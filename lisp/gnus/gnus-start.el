@@ -395,6 +395,8 @@ Can be used to turn version control on or off."
 
 ;;; Internal variables
 
+;; Fixme: deal with old emacs-mule when mm-universal-coding-system is
+;; utf-8-emacs.
 (defvar gnus-ding-file-coding-system mm-universal-coding-system
   "Coding system for ding file.")
 
@@ -2015,8 +2017,7 @@ If FORCE is non-nil, the .newsrc file is read."
     (gnus-message 5 "Reading %s..." ding-file)
     (let (gnus-newsrc-assoc)
       (condition-case nil
-	  (let ((coding-system-for-read gnus-ding-file-coding-system))
-	    (load ding-file t t t))
+	  (load ding-file t t t)
 	(error
 	 (ding)
 	 (unless (gnus-yes-or-no-p
@@ -2390,7 +2391,8 @@ If FORCE is non-nil, the .newsrc file is read."
   (let ((print-quoted t)
 	(print-escape-newlines t))
 
-    (insert ";; -*- emacs-lisp -*-\n")
+    (insert ";; -*- emacs-lisp; coding: "
+	    (format "%s" gnus-ding-file-coding-system) ";-*-\n")
     (insert ";; Gnus startup file.\n")
     (insert "\
 ;; Never delete this file -- if you want to force Gnus to read the
@@ -2667,5 +2669,4 @@ If this variable is nil, don't do anything."
 
 (provide 'gnus-start)
 
-;;; arch-tag: f4584a22-b7b7-4853-abfc-a637329af5d2
 ;;; gnus-start.el ends here

@@ -277,13 +277,21 @@ in REGEXP."
     (map-char-table
      (lambda (c v)
        (when v
-	 (if (= (1- c) end) (setq end c)
-	   (if (> end (+ start 2))
+	 (if (consp c)
+	     (if (= (1- (car c)) end) (setq end (cdr c))
+	       (if (> end (+ start 2))
+		   (setq charset (format "%s%c-%c" charset start end))
+		 (while (>= end start)
+		   (setq charset (format "%s%c" charset start))
+		   (incf start)))
+	       (setq start (car c) end (cdr c)))
+	   (if (= (1- c) end) (setq end c)
+	     (if (> end (+ start 2))
 	       (setq charset (format "%s%c-%c" charset start end))
 	     (while (>= end start)
 	       (setq charset (format "%s%c" charset start))
 	       (incf start)))
-	   (setq start c end c))))
+	     (setq start c end c)))))
      charmap)
     (when (>= end start)
       (if (> end (+ start 2))
@@ -299,5 +307,4 @@ in REGEXP."
 
 (provide 'regexp-opt)
 
-;;; arch-tag: 6c5a66f4-29af-4fd6-8c3b-4b554d5b4370
 ;;; regexp-opt.el ends here

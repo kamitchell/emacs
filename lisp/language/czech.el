@@ -34,8 +34,7 @@
 	   (coding-system . (iso-8859-2))
 	   (coding-priority . (iso-8859-2))
 	   (input-method . "czech")
-	   (nonascii-translation . latin-iso8859-2)
-	   (unibyte-syntax . "latin-2")
+	   (nonascii-translation . iso-8859-2)
 	   (unibyte-display . iso-8859-2)
 	   (tutorial . "TUTORIAL.cs")
 	   (sample-text . "P,Bx(Bejeme v,Ba(Bm hezk,B}(B den!")
@@ -47,5 +46,4 @@ and selects the Czech tutorial."))
 
 (provide 'czech)
 
-;;; arch-tag: 45ac0d83-ca13-4b5e-9e82-821e44080c24
 ;;; czech.el ends here

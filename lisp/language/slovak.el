@@ -34,9 +34,8 @@
  "Slovak" '((charset . (ascii latin-iso8859-2))
 	    (coding-system . (iso-8859-2))
 	    (coding-priority . (iso-8859-2))
-	    (nonascii-translation . latin-iso8859-2)
+	    (nonascii-translation . iso-8859-2)
 	    (input-method . "slovak")
-	    (unibyte-syntax . "latin-2")
 	    (unibyte-display . iso-8859-2)
 	    (tutorial . "TUTORIAL.sk")
 	    (sample-text . "Prajeme V,Ba(Bm pr,Bm(Bjemn,B}(B de,Br(B!")
@@ -48,5 +47,4 @@ and selects the Slovak tutorial."))
 
 (provide 'slovak)
 
-;;; arch-tag: 1bae098a-33b2-4426-8c29-59e44fe05484
 ;;; slovak.el ends here

@@ -129,13 +129,12 @@ or remove a tab stop.  \\[ruler-mode-toggle-show-tab-stops] or
   "Ensure WIDGET value is a valid character value."
   (save-excursion
     (let ((value (widget-value widget)))
-      (if (char-valid-p value)
-          nil
+      (unless (characterp value)
         (widget-put widget :error
                     (format "Invalid character value: %S" value))
         widget))))
 
-(defcustom ruler-mode-fill-column-char (if (char-displayable-p ?¶)
+(defcustom ruler-mode-fill-column-char (if window-system
                                            ?\¶
                                          ?\|)
   "*Character used at the `fill-column' location."
@@ -161,7 +160,7 @@ or remove a tab stop.  \\[ruler-mode-toggle-show-tab-stops] or
           (integer :tag "Integer char value"
                    :validate ruler-mode-character-validate)))
 
-(defcustom ruler-mode-current-column-char (if (char-displayable-p ?¦)
+(defcustom ruler-mode-current-column-char (if window-system
                                               ?\¦
                                             ?\@)
   "*Character used at the `current-column' location."
@@ -791,5 +790,4 @@ mouse-2: unset goal column"
 ;; coding: iso-latin-1
 ;; End:
 
-;;; arch-tag: b2f24546-5605-44c4-b67b-c9a4eeba3ee8
 ;;; ruler-mode.el ends here

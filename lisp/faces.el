@@ -1226,7 +1226,8 @@ If FRAME is omitted or nil, use the selected frame."
 		  (:box . "Box")
 		  (:inverse-video . "Inverse")
 		  (:stipple . "Stipple")
-		  (:font . "Font or fontset")
+		  (:font . "Font")
+		  (:fontset . "Fontset")
 		  (:inherit . "Inherit")))
 	(max-width (apply #'max (mapcar #'(lambda (x) (length (cdr x)))
 					attrs))))
@@ -2214,5 +2215,4 @@ If that can't be done, return nil."
 
 (provide 'faces)
 
-;;; arch-tag: 19a4759f-2963-445f-b004-425b9aadd7d6
 ;;; faces.el ends here

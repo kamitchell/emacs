@@ -37,17 +37,18 @@
 ;;		- buffer-read-only
 ;;		- some local variables
 
-;; To use this, add these lines to the bottom of your .emacs file:
+;; To use this, first put these two lines in the bottom of your .emacs
+;; file (the later the better):
 ;;
-;;      (require 'desktop)
-;;      (setq desktop-enable t)
+;;	(desktop-load-default)
+;;	(desktop-read)
 ;;
-;; Between the first two lines you may wish to add something that updates the
+;; Between these two lines you may wish to add something that updates the
 ;; variables `desktop-globals-to-save' and/or `desktop-locals-to-save'.  If
 ;; for instance you want to save the local variable `foobar' for every buffer
 ;; in which it is local, you could add the line
 ;;
-;;	(add-to-list 'desktop-locals-to-save 'foobar)
+;;	(setq desktop-locals-to-save (cons 'foobar desktop-locals-to-save))
 ;;
 ;; To avoid saving excessive amounts of data you may also wish to add
 ;; something like the following
@@ -396,7 +397,7 @@ is nil, ask the user where to save the desktop."
       desktop-enable
       (let ((exists (file-exists-p (expand-file-name desktop-base-file-name desktop-dirname))))
         (or
-          (eq desktop-save t)
+          (eq desktop-save 't)
           (and exists (memq desktop-save '(ask-if-new if-exists)))
           (and
             (or
@@ -629,7 +630,7 @@ DIRNAME must be the directory in which the desktop file will be saved."
       (erase-buffer)
 
       (insert
-        ";; -*- coding: emacs-mule; -*-\n"
+        ";; -*- coding: utf-8-emacs; -*-\n"
         desktop-header
         ";; Created " (current-time-string) "\n"
         ";; Desktop file format version " desktop-file-version "\n"
@@ -658,7 +659,7 @@ DIRNAME must be the directory in which the desktop file will be saved."
         info)
       (setq default-directory dirname)
       (when (file-exists-p filename) (delete-file filename))
-      (let ((coding-system-for-write 'emacs-mule))
+      (let ((coding-system-for-write 'utf-8-emacs))
         (write-region (point-min) (point-max) filename nil 'nomessage))))
   (setq desktop-dirname dirname))
 
@@ -834,13 +835,11 @@ This function always sets `desktop-enable' to t."
       ;; First element of `desktop-buffer-misc' is the value of `dired-directory'.
       ;; This value is a directory name, optionally with with shell wildcard or
       ;; a directory name followed by list of files.
-      (let* ((dired-dir (car desktop-buffer-misc))
-	     (dir (if (consp dired-dir) (car dired-dir) dired-dir)))
+      (let* ((dired-directory (car desktop-buffer-misc))
+	     (dir (if (consp dired-directory) (car dired-directory) dired-directory)))
 	(if (file-directory-p (file-name-directory dir))
 	    (progn
-	      (dired dired-dir)
-              ;; The following elements of `desktop-buffer-misc' are the keys
-              ;; from `dired-subdir-alist'.
+	      (dired dired-directory)
 	      (mapcar 'dired-maybe-insert-subdir (cdr desktop-buffer-misc))
 	      (current-buffer))
 	  (message "Directory %s no longer exists." dir)
@@ -979,5 +978,4 @@ This function always sets `desktop-enable' to t."
 
 (provide 'desktop)
 
-;;; arch-tag: 221907c3-1771-4fd3-9c2e-c6f700c6ede9
 ;;; desktop.el ends here
