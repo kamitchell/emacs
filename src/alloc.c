@@ -38,7 +38,6 @@ Boston, MA 02111-1307, USA.  */
    replaced, this file likely will not be used.  */
 
 #undef HIDE_LISP_IMPLEMENTATION
-#define DOC_STRINGS_IN_COMMENTS
 #include "lisp.h"
 #include "process.h"
 #include "intervals.h"
@@ -80,6 +79,9 @@ extern __malloc_size_t _bytes_used;
 extern __malloc_size_t __malloc_extra_blocks;
 
 #endif /* not DOUG_LEA_MALLOC */
+
+#define max(A,B) ((A) > (B) ? (A) : (B))
+#define min(A,B) ((A) < (B) ? (A) : (B))
 
 /* Macro to verify that storage intended for Lisp objects is not
    out of range to fit in the space for a pointer.
@@ -189,30 +191,29 @@ Lisp_Object Vpurify_flag;
 EMACS_INT pure[PURESIZE / sizeof (EMACS_INT)] = {0,};
 #define PUREBEG (char *) pure
 
-#else /* HAVE_SHM */
+#else /* not HAVE_SHM */
 
 #define pure PURE_SEG_BITS   /* Use shared memory segment */
 #define PUREBEG (char *)PURE_SEG_BITS
 
-#endif /* HAVE_SHM */
+/* This variable is used only by the XPNTR macro when HAVE_SHM is
+   defined.  If we used the PURESIZE macro directly there, that would
+   make most of Emacs dependent on puresize.h, which we don't want -
+   you should be able to change that without too much recompilation.
+   So map_in_data initializes pure_size, and the dependencies work
+   out.  */
 
-/* Pointer to the pure area, and its size.  */
+EMACS_INT pure_size;
 
-static char *purebeg;
-static size_t pure_size;
-
-/* Number of bytes of pure storage used before pure storage overflowed.
-   If this is non-zero, this implies that an overflow occurred.  */
-
-static size_t pure_bytes_used_before_overflow;
+#endif /* not HAVE_SHM */
 
 /* Value is non-zero if P points into pure space.  */
 
 #define PURE_POINTER_P(P)					\
      (((PNTR_COMPARISON_TYPE) (P)				\
-       < (PNTR_COMPARISON_TYPE) ((char *) purebeg + pure_size))	\
+       < (PNTR_COMPARISON_TYPE) ((char *) pure + PURESIZE))	\
       && ((PNTR_COMPARISON_TYPE) (P)				\
-	  >= (PNTR_COMPARISON_TYPE) purebeg))
+	  >= (PNTR_COMPARISON_TYPE) pure))
 
 /* Index in pure at which next pure object will be allocated.. */
 
@@ -245,10 +246,6 @@ int ignore_warnings;
 
 Lisp_Object Qgc_cons_threshold, Qchar_table_extra_slots;
 
-/* Hook run after GC has finished.  */
-
-Lisp_Object Vpost_gc_hook, Qpost_gc_hook;
-
 static void mark_buffer P_ ((Lisp_Object));
 static void mark_kboards P_ ((void));
 static void gc_sweep P_ ((void));
@@ -280,6 +277,7 @@ enum mem_type
   MEM_TYPE_MISC,
   MEM_TYPE_SYMBOL,
   MEM_TYPE_FLOAT,
+  MEM_TYPE_BIGNUM,
   /* Keep the following vector-like types together, with
      MEM_TYPE_WINDOW being the last, and MEM_TYPE_VECTOR the
      first.  Or change the code of live_vector_p, for instance.  */
@@ -367,6 +365,7 @@ static POINTER_TYPE *lisp_malloc P_ ((size_t, enum mem_type));
 static struct Lisp_Vector *allocate_vectorlike P_ ((EMACS_INT, enum mem_type));
 static void lisp_free P_ ((POINTER_TYPE *));
 static void mark_stack P_ ((void));
+static void init_stack P_ ((Lisp_Object *));
 static int live_vector_p P_ ((struct mem_node *, void *));
 static int live_buffer_p P_ ((struct mem_node *, void *));
 static int live_string_p P_ ((struct mem_node *, void *));
@@ -614,11 +613,8 @@ lisp_malloc (nbytes, type)
 struct buffer *
 allocate_buffer ()
 {
-  struct buffer *b 
-    = (struct buffer *) lisp_malloc (sizeof (struct buffer),
-				     MEM_TYPE_BUFFER);
-  VALIDATE_LISP_STORAGE (b, sizeof *b);
-  return b;
+  return (struct buffer *) lisp_malloc (sizeof (struct buffer),
+					MEM_TYPE_BUFFER);
 }
 
 
@@ -973,7 +969,7 @@ mark_interval_tree (tree)
      a cast.  */
   XMARK (tree->up.obj);
 
-  traverse_intervals_noorder (tree, mark_interval, Qnil);
+  traverse_intervals (tree, 1, 0, mark_interval, Qnil);
 }
 
 
@@ -1003,9 +999,9 @@ mark_interval_tree (tree)
 
 /* Number support.  If NO_UNION_TYPE isn't in effect, we
    can't create number objects in macros.  */
-#ifndef make_number
+#ifndef make_fixnum
 Lisp_Object
-make_number (n)
+make_fixnum (n)
      int n;
 {
   Lisp_Object obj;
@@ -1660,9 +1656,9 @@ compact_small_strings ()
 
 
 DEFUN ("make-string", Fmake_string, Smake_string, 2, 2, 0,
-  /* Return a newly created string of length LENGTH, with each element being INIT.
-Both LENGTH and INIT must be numbers.  */
-       (length, init))
+  "Return a newly created string of length LENGTH, with each element being INIT.\n\
+Both LENGTH and INIT must be numbers.")
+  (length, init)
      Lisp_Object length, init;
 {
   register Lisp_Object val;
@@ -1704,9 +1700,9 @@ Both LENGTH and INIT must be numbers.  */
 
 
 DEFUN ("make-bool-vector", Fmake_bool_vector, Smake_bool_vector, 2, 2, 0,
-  /* Return a new bool-vector of length LENGTH, using INIT for as each element.
-LENGTH must be a number.  INIT matters only in whether it is t or nil.  */
-       (length, init))
+  "Return a new bool-vector of length LENGTH, using INIT for as each element.\n\
+LENGTH must be a number.  INIT matters only in whether it is t or nil.")
+  (length, init)
      Lisp_Object length, init;
 {
   register Lisp_Object val;
@@ -1723,7 +1719,7 @@ LENGTH must be a number.  INIT matters only in whether it is t or nil.  */
 
   /* We must allocate one more elements than LENGTH_IN_ELTS for the
      slot `size' of the struct Lisp_Bool_Vector.  */
-  val = Fmake_vector (make_number (length_in_elts + 1), Qnil);
+  val = Fmake_vector (make_fixnum (length_in_elts + 1), Qnil);
   p = XBOOL_VECTOR (val);
   
   /* Get rid of any bits that would cause confusion.  */
@@ -1881,6 +1877,186 @@ make_uninit_multibyte_string (nchars, nbytes)
 
 
 /***********************************************************************
+			   Bignum Allocation
+ ***********************************************************************/
+
+#ifdef HAVE_LIBGMP
+
+#define BIGNUMS_PER_BLOCK \
+  ((1020 - sizeof (struct bignum_block *)) / sizeof (struct Lisp_Bignum))
+
+struct bignum_block
+{
+  struct bignum_block *next;
+  struct Lisp_Bignum bignums[BIGNUMS_PER_BLOCK];
+};
+
+static struct bignum_block *bignum_blocks;
+static struct Lisp_Bignum *free_bignums;
+static int n_live_bignums, n_free_bignums;
+
+static Lisp_Object allocate_bignum P_ ((enum bignum_type));
+static void sweep_bignums P_ ((void));
+static int live_bignum_p P_ ((struct mem_node *, void *));
+static void init_bignums P_ ((void));
+
+
+static Lisp_Object
+allocate_bignum (type)
+     enum bignum_type type;
+{
+  Lisp_Object result;
+  struct Lisp_Bignum *bignum;
+  
+  if (free_bignums == NULL)
+    {
+      struct bignum_block *b =
+	(struct bignum_block *) lisp_malloc (sizeof *b, MEM_TYPE_BIGNUM);
+      int i;
+
+      for (i = 0; i < BIGNUMS_PER_BLOCK; ++i)
+	{
+	  b->bignums[i].u.next_free = free_bignums;
+	  free_bignums = &b->bignums[i];
+	}
+    }
+
+  bignum = free_bignums;
+  free_bignums = bignum->u.next_free;
+  bignum->type = type;
+  bignum->marked = 0;
+  XSETBIGNUM (result, bignum);
+  return result;
+}
+
+
+static void
+sweep_bignums ()
+{
+  struct bignum_block *b, *next, *live_blocks;
+  struct Lisp_Bignum *free;
+  int nfree, nused;
+
+  live_blocks = NULL;
+  free = NULL;
+  nfree = nused = 0;
+  
+  for (b = bignum_blocks; b; b = next)
+    {
+      struct Lisp_Bignum *old_free = free;
+      int i, n;
+
+      next = b->next;
+      
+      for (i = n = 0; i < BIGNUMS_PER_BLOCK; ++i)
+	{
+	  if (b->bignums[i].marked == 0)
+	    {
+	      if (b->bignums[i].type == BIG_INTEGER)
+		mpz_clear (b->bignums[i].u.i);
+	      else if (b->bignums[i].type == BIG_FLOAT)
+		mpf_clear (b->bignums[i].u.f);
+	      else if (b->bignums[i].type == BIG_RATIONAL)
+		mpq_clear (b->bignums[i].u.r);
+	      
+	      b->bignums[i].u.next_free = free;
+	      b->bignums[i].type = BIG_DEAD;
+	      free = &b->bignums[i];
+	      ++n;
+	    }
+	  else
+	    {
+	      ++nused;
+	      b->bignums[i].marked = 0;
+	    }
+	}
+      
+      if (n == BIGNUMS_PER_BLOCK && nfree > BIGNUMS_PER_BLOCK)
+	{
+	  free = old_free;
+	  lisp_free (b);
+	}
+      else
+	{
+	  nfree += n;
+	  b->next = live_blocks;
+	  live_blocks = b;
+	}
+    }
+  
+  n_live_bignums = nused;
+  n_free_bignums = nfree;
+  free_bignums = free;
+  bignum_blocks = live_blocks;
+}
+
+
+static INLINE int
+live_bignum_p (m, p)
+     struct mem_node *m;
+     void *p;
+{
+  if (m->type == MEM_TYPE_BIGNUM)
+    {
+      struct bignum_block *b = (struct bignum_block *) m->start;
+      int offset = (char *) p - (char *) &b->bignums[0];
+      
+      /* P must point to the start of a Lisp_Float, not be
+	 one of the unused cells in the current float block,
+	 and not be on the free-list.  */
+      return (offset >= 0
+	      && offset % sizeof b->bignums[0] == 0
+	      && ((struct Lisp_Bignum *) p)->type != BIG_DEAD);
+    }
+  else
+    return 0;
+}
+
+
+static void
+init_bignums ()
+{
+}
+
+
+Lisp_Object
+make_bigint (val)
+     mpz_t val;
+{
+  Lisp_Object result;
+  result = allocate_bignum (BIG_INTEGER);
+  mpz_init_set (XBIGNUM (result)->u.i, val);
+  return result;
+}
+
+
+Lisp_Object
+make_bigint_from_string (s, radix)
+     char *s;
+     int radix;
+{
+  Lisp_Object result;
+  result = allocate_bignum (BIG_INTEGER);
+  mpz_init_set_str (XBIGNUM (result)->u.i, s, radix);
+  return result;
+}
+
+
+Lisp_Object
+make_bigint_from_int (val)
+     EMACS_INT val;
+{
+  Lisp_Object result;
+  result = allocate_bignum (BIG_INTEGER);
+  mpz_init_set_si (XBIGNUM (result)->u.i, val);
+  return result;
+}
+
+#endif /* HAVE_LIBGMP */
+
+
+
+/***********************************************************************
 			   Float Allocation
  ***********************************************************************/
 
@@ -1919,7 +2095,7 @@ int n_float_blocks;
 struct Lisp_Float *float_free_list;
 
 
-/* Initialize float allocation.  */
+/* Initialze float allocation.  */
 
 void
 init_float ()
@@ -2058,8 +2234,8 @@ free_cons (ptr)
 
 
 DEFUN ("cons", Fcons, Scons, 2, 2, 0,
-  /* Create a new cons, give it CAR and CDR as components, and return it.  */
-       (car, cdr))
+  "Create a new cons, give it CAR and CDR as components, and return it.")
+  (car, cdr)
      Lisp_Object car, cdr;
 {
   register Lisp_Object val;
@@ -2087,8 +2263,8 @@ DEFUN ("cons", Fcons, Scons, 2, 2, 0,
       XSETCONS (val, &cons_block->conses[cons_block_index++]);
     }
   
-  XSETCAR (val, car);
-  XSETCDR (val, cdr);
+  XCAR (val) = car;
+  XCDR (val) = cdr;
   consing_since_gc += sizeof (struct Lisp_Cons);
   cons_cells_consed++;
   return val;
@@ -2131,9 +2307,9 @@ list5 (arg1, arg2, arg3, arg4, arg5)
 
 
 DEFUN ("list", Flist, Slist, 0, MANY, 0,
-  /* Return a newly created list with specified arguments as elements.
-Any number of arguments, even zero arguments, are allowed.  */
-       (nargs, args))
+  "Return a newly created list with specified arguments as elements.\n\
+Any number of arguments, even zero arguments, are allowed.")
+  (nargs, args)
      int nargs;
      register Lisp_Object *args;
 {
@@ -2150,8 +2326,8 @@ Any number of arguments, even zero arguments, are allowed.  */
 
 
 DEFUN ("make-list", Fmake_list, Smake_list, 2, 2, 0,
-  /* Return a newly created list of length LENGTH, with each element being INIT.  */
-       (length, init))
+  "Return a newly created list of length LENGTH, with each element being INIT.")
+  (length, init)
      register Lisp_Object length, init;
 {
   register Lisp_Object val;
@@ -2300,7 +2476,7 @@ allocate_frame ()
   EMACS_INT i;
   
   for (i = 0; i < len; ++i)
-    v->contents[i] = make_number (0);
+    v->contents[i] = make_fixnum (0);
   v->size = len;
   return (struct frame *) v;
 }
@@ -2337,9 +2513,9 @@ allocate_other_vector (len)
 
 
 DEFUN ("make-vector", Fmake_vector, Smake_vector, 2, 2, 0,
-  /* Return a newly created vector of length LENGTH, with each element being INIT.
-See also the function `vector'.  */
-       (length, init))
+  "Return a newly created vector of length LENGTH, with each element being INIT.\n\
+See also the function `vector'.")
+  (length, init)
      register Lisp_Object length, init;
 {
   Lisp_Object vector;
@@ -2360,11 +2536,11 @@ See also the function `vector'.  */
 
 
 DEFUN ("make-char-table", Fmake_char_table, Smake_char_table, 1, 2, 0,
-  /* Return a newly created char-table, with purpose PURPOSE.
-Each element is initialized to INIT, which defaults to nil.
-PURPOSE should be a symbol which has a `char-table-extra-slots' property.
-The property's value should be an integer between 0 and 10.  */
-       (purpose, init))
+  "Return a newly created char-table, with purpose PURPOSE.\n\
+Each element is initialized to INIT, which defaults to nil.\n\
+PURPOSE should be a symbol which has a `char-table-extra-slots' property.\n\
+The property's value should be an integer between 0 and 10.")
+  (purpose, init)
      register Lisp_Object purpose, init;
 {
   Lisp_Object vector;
@@ -2375,7 +2551,7 @@ The property's value should be an integer between 0 and 10.  */
   if (XINT (n) < 0 || XINT (n) > 10)
     args_out_of_range (n, Qnil);
   /* Add 2 to the size for the defalt and parent slots.  */
-  vector = Fmake_vector (make_number (CHAR_TABLE_STANDARD_SLOTS + XINT (n)),
+  vector = Fmake_vector (make_fixnum (CHAR_TABLE_STANDARD_SLOTS + XINT (n)),
 			 init);
   XCHAR_TABLE (vector)->top = Qt;
   XCHAR_TABLE (vector)->parent = Qnil;
@@ -2394,7 +2570,7 @@ make_sub_char_table (defalt)
      Lisp_Object defalt;
 {
   Lisp_Object vector
-    = Fmake_vector (make_number (SUB_CHAR_TABLE_STANDARD_SLOTS), Qnil);
+    = Fmake_vector (make_fixnum (SUB_CHAR_TABLE_STANDARD_SLOTS), Qnil);
   XCHAR_TABLE (vector)->top = Qnil;
   XCHAR_TABLE (vector)->defalt = defalt;
   XSETCHAR_TABLE (vector, XCHAR_TABLE (vector));
@@ -2403,9 +2579,9 @@ make_sub_char_table (defalt)
 
 
 DEFUN ("vector", Fvector, Svector, 0, MANY, 0,
-  /* Return a newly created vector with specified arguments as elements.
-Any number of arguments, even zero arguments, are allowed.  */
-       (nargs, args))
+  "Return a newly created vector with specified arguments as elements.\n\
+Any number of arguments, even zero arguments, are allowed.")
+  (nargs, args)
      register int nargs;
      Lisp_Object *args;
 {
@@ -2423,12 +2599,12 @@ Any number of arguments, even zero arguments, are allowed.  */
 
 
 DEFUN ("make-byte-code", Fmake_byte_code, Smake_byte_code, 4, MANY, 0,
-  /* Create a byte-code object with specified arguments as elements.
-The arguments should be the arglist, bytecode-string, constant vector,
-stack size, (optional) doc string, and (optional) interactive spec.
-The first four arguments are required; at most six have any
-significance.  */
-       (nargs, args))
+  "Create a byte-code object with specified arguments as elements.\n\
+The arguments should be the arglist, bytecode-string, constant vector,\n\
+stack size, (optional) doc string, and (optional) interactive spec.\n\
+The first four arguments are required; at most six have any\n\
+significance.")
+  (nargs, args)
      register int nargs;
      Lisp_Object *args;
 {
@@ -2511,9 +2687,9 @@ init_symbol ()
 
 
 DEFUN ("make-symbol", Fmake_symbol, Smake_symbol, 1, 1, 0,
-  /* Return a newly allocated uninterned symbol whose name is NAME.
-Its value and function definition are void, and its property list is nil.  */
-       (name))
+  "Return a newly allocated uninterned symbol whose name is NAME.\n\
+Its value and function definition are void, and its property list is nil.")
+  (name)
      Lisp_Object name;
 {
   register Lisp_Object val;
@@ -2544,13 +2720,11 @@ Its value and function definition are void, and its property list is nil.  */
   
   p = XSYMBOL (val);
   p->name = XSTRING (name);
+  p->obarray = Qnil;
   p->plist = Qnil;
   p->value = Qunbound;
   p->function = Qunbound;
-  p->next = NULL;
-  p->interned = SYMBOL_UNINTERNED;
-  p->constant = 0;
-  p->indirect_variable = 0;
+  p->next = 0;
   consing_since_gc += sizeof (struct Lisp_Symbol);
   symbols_consed++;
   return val;
@@ -2629,8 +2803,8 @@ allocate_misc ()
 }
 
 DEFUN ("make-marker", Fmake_marker, Smake_marker, 0, 0, 0,
-  /* Return a newly allocated marker which does not point at any place.  */
-       ())
+  "Return a newly allocated marker which does not point at any place.")
+  ()
 {
   register Lisp_Object val;
   register struct Lisp_Marker *p;
@@ -2679,7 +2853,7 @@ make_event_array (nargs, args)
     /* The things that fit in a string
        are characters that are in 0...127,
        after discarding the meta bit and all the bits above it.  */
-    if (!INTEGERP (args[i])
+    if (!FIXNUMP (args[i])
 	|| (XUINT (args[i]) & ~(-CHAR_META)) >= 0200)
       return Fvector (nargs, args);
 
@@ -2688,7 +2862,7 @@ make_event_array (nargs, args)
   {
     Lisp_Object result;
     
-    result = Fmake_string (make_number (nargs), make_number (0));
+    result = Fmake_string (make_fixnum (nargs), make_fixnum (0));
     for (i = 0; i < nargs; i++)
       {
 	XSTRING (result)->data[i] = XINT (args[i]);
@@ -3300,17 +3474,17 @@ static int max_live, max_zombies;
 static double avg_live;
 
 DEFUN ("gc-status", Fgc_status, Sgc_status, 0, 0, "",
-       /* Show information about live and zombie objects.  */
-       ())
+  "Show information about live and zombie objects.")
+     ()
 {
   Lisp_Object args[7];
   args[0] = build_string ("%d GCs, avg live/zombies = %.2f/%.2f (%f%%), max %d/%d");
-  args[1] = make_number (ngcs);
+  args[1] = make_fixnum (ngcs);
   args[2] = make_float (avg_live);
   args[3] = make_float (avg_zombies);
   args[4] = make_float (avg_zombies / avg_live / 100);
-  args[5] = make_number (max_live);
-  args[6] = make_number (max_zombies);
+  args[5] = make_fixnum (max_live);
+  args[6] = make_fixnum (max_zombies);
   return Fmessage (7, args);
 }
 
@@ -3387,6 +3561,13 @@ mark_maybe_object (obj)
 	case Lisp_Int:
 	case Lisp_Type_Limit:
 	  break;
+
+#ifdef HAVE_LIBGMP
+	case Lisp_Bignum:
+	  if (live_bignum_p (m, po))
+	    mark_p = XBIGNUM (obj)->marked == 0;
+	  break;
+#endif
 	}
 
       if (mark_p)
@@ -3498,6 +3679,14 @@ mark_maybe_pointer (p)
 		obj = tem;
 	    }
 	  break;
+
+#ifdef HAVE_LIBGMP
+	case MEM_TYPE_BIGNUM:
+	  if (live_bignum_p (m, p)
+	      && ((struct Lisp_Bignum *) p)->marked == 0)
+	    XSETBIGNUM (obj, p);
+	  break;
+#endif
 
 	default:
 	  abort ();
@@ -3796,7 +3985,7 @@ pure_alloc (size, type)
 {
   size_t nbytes;
   POINTER_TYPE *result;
-  char *beg = purebeg;
+  char *beg = PUREBEG;
 
   /* Give Lisp_Floats an extra alignment.  */
   if (type == Lisp_Float)
@@ -3811,29 +4000,12 @@ pure_alloc (size, type)
     }
     
   nbytes = ALIGN (size, sizeof (EMACS_INT));
-  
-  if (pure_bytes_used + nbytes > pure_size)
-    {
-      beg = purebeg = (char *) xmalloc (PURESIZE);
-      pure_size = PURESIZE;
-      pure_bytes_used_before_overflow += pure_bytes_used;
-      pure_bytes_used = 0;
-    }
+  if (pure_bytes_used + nbytes > PURESIZE)
+    error ("Pure Lisp storage exhausted");
 
   result = (POINTER_TYPE *) (beg + pure_bytes_used);
   pure_bytes_used += nbytes;
   return result;
-}
-
-
-/* Signal an error if PURESIZE is too small.  */
-
-void
-check_pure_size ()
-{
-  if (pure_bytes_used_before_overflow)
-    error ("Pure Lisp storage overflow (approx. %d bytes needed)",
-	   (int) (pure_bytes_used + pure_bytes_used_before_overflow));
 }
 
 
@@ -3878,8 +4050,8 @@ pure_cons (car, cdr)
 
   p = (struct Lisp_Cons *) pure_alloc (sizeof *p, Lisp_Cons);
   XSETCONS (new, p);
-  XSETCAR (new, Fpurecopy (car));
-  XSETCDR (new, Fpurecopy (cdr));
+  XCAR (new) = Fpurecopy (car);
+  XCDR (new) = Fpurecopy (cdr);
   return new;
 }
 
@@ -3918,11 +4090,48 @@ make_pure_vector (len)
 }
 
 
+#ifdef HAVE_LIBGMP
+
+Lisp_Object
+make_pure_bignum (obj)
+     Lisp_Object obj;
+{
+  struct Lisp_Bignum *p
+    = (struct Lisp_Bignum *) pure_alloc (sizeof *p, Lisp_Bignum);
+  struct Lisp_Bignum *old = XBIGNUM (obj);
+
+  p->type = old->type;
+  switch (old->type)
+    {
+    case BIG_INTEGER:
+      mpz_init_set (p->u.i, old->u.i);
+      break;
+      
+    case BIG_FLOAT:
+      mpf_init_set (p->u.f, old->u.f);
+      break;
+      
+    case BIG_RATIONAL:
+      mpq_init (p->u.r);
+      mpq_set (p->u.r, old->u.r);
+      break;
+
+    default:
+      abort ();
+    }
+
+  XSETBIGNUM (obj, p);
+  return obj;
+}
+
+#endif  /* HAVE_LIBGMP */
+
+
 DEFUN ("purecopy", Fpurecopy, Spurecopy, 1, 1, 0,
-       /* Make a copy of OBJECT in pure storage.
-Recursively copies contents of vectors and cons cells.
-Does not copy symbols.  Copies strings without text properties.  */
-       (obj))
+  "Make a copy of OBJECT in pure storage.\n\
+Recursively copies contents of vectors and cons cells.\n\
+Does not copy symbols.  Copies strings without text properties.")
+  (obj)
      register Lisp_Object obj;
 {
   if (NILP (Vpurify_flag))
@@ -3958,6 +4167,10 @@ Does not copy symbols.  Copies strings without text properties.  */
     }
   else if (MARKERP (obj))
     error ("Attempt to copy a marker to pure storage");
+#ifdef HAVE_LIBGMP
+  else if (BIGNUMP (obj))
+    obj = make_pure_bignum (obj);
+#endif
 
   return obj;
 }
@@ -4010,21 +4223,27 @@ int
 inhibit_garbage_collection ()
 {
   int count = specpdl_ptr - specpdl;
-  specbind (Qgc_cons_threshold, make_number (MOST_POSITIVE_FIXNUM));
+  Lisp_Object number;
+  int nbits = min (VALBITS, BITS_PER_INT);
+
+  XSETINT (number, ((EMACS_INT) 1 << (nbits - 1)) - 1);
+
+  specbind (Qgc_cons_threshold, number);
+
   return count;
 }
 
 
 DEFUN ("garbage-collect", Fgarbage_collect, Sgarbage_collect, 0, 0, "",
-       /* Reclaim storage for Lisp objects no longer needed.
-Returns info on amount of space in use:
- ((USED-CONSES . FREE-CONSES) (USED-SYMS . FREE-SYMS)
-  (USED-MARKERS . FREE-MARKERS) USED-STRING-CHARS USED-VECTOR-SLOTS
-  (USED-FLOATS . FREE-FLOATS) (USED-INTERVALS . FREE-INTERVALS)
-  (USED-STRINGS . FREE-STRINGS))
-Garbage collection happens automatically if you cons more than
-`gc-cons-threshold' bytes of Lisp data since previous garbage collection.  */
-       ())
+  "Reclaim storage for Lisp objects no longer needed.\n\
+Returns info on amount of space in use:\n\
+ ((USED-CONSES . FREE-CONSES) (USED-SYMS . FREE-SYMS)\n\
+  (USED-MARKERS . FREE-MARKERS) USED-STRING-CHARS USED-VECTOR-SLOTS\n\
+  (USED-FLOATS . FREE-FLOATS) (USED-INTERVALS . FREE-INTERVALS)\n\
+  (USED-STRINGS . FREE-STRINGS))\n\
+Garbage collection happens automatically if you cons more than\n\
+`gc-cons-threshold' bytes of Lisp data since previous garbage collection.")
+  ()
 {
   register struct gcpro *tail;
   register struct specbinding *bind;
@@ -4036,11 +4255,6 @@ Garbage collection happens automatically if you cons more than
   int message_p;
   Lisp_Object total[8];
   int count = BINDING_STACK_SIZE ();
-
-  /* Can't GC if pure storage overflowed because we can't determine
-     if something is a pure object or not.  */
-  if (pure_bytes_used_before_overflow)
-    return Qnil;
 
   /* In case user calls debug_print during GC,
      don't let that cause a recursive GC.  */
@@ -4189,10 +4403,7 @@ Garbage collection happens automatically if you cons more than
 		    if (NILP (prev))
 		      nextb->undo_list = tail = XCDR (tail);
 		    else
-		      {
-			tail = XCDR (tail);
-			XSETCDR (prev, tail);
-		      }
+		      tail = XCDR (prev) = XCDR (tail);
 		  }
 		else
 		  {
@@ -4258,20 +4469,20 @@ Garbage collection happens automatically if you cons more than
 
   unbind_to (count, Qnil);
 
-  total[0] = Fcons (make_number (total_conses),
-		    make_number (total_free_conses));
-  total[1] = Fcons (make_number (total_symbols),
-		    make_number (total_free_symbols));
-  total[2] = Fcons (make_number (total_markers),
-		    make_number (total_free_markers));
-  total[3] = make_number (total_string_size);
-  total[4] = make_number (total_vector_size);
-  total[5] = Fcons (make_number (total_floats),
-		    make_number (total_free_floats));
-  total[6] = Fcons (make_number (total_intervals),
-		    make_number (total_free_intervals));
-  total[7] = Fcons (make_number (total_strings),
-		    make_number (total_free_strings));
+  total[0] = Fcons (make_fixnum (total_conses),
+		    make_fixnum (total_free_conses));
+  total[1] = Fcons (make_fixnum (total_symbols),
+		    make_fixnum (total_free_symbols));
+  total[2] = Fcons (make_fixnum (total_markers),
+		    make_fixnum (total_free_markers));
+  total[3] = make_fixnum (total_string_size);
+  total[4] = make_fixnum (total_vector_size);
+  total[5] = Fcons (make_fixnum (total_floats),
+		    make_fixnum (total_free_floats));
+  total[6] = Fcons (make_fixnum (total_intervals),
+		    make_fixnum (total_free_intervals));
+  total[7] = Fcons (make_fixnum (total_strings),
+		    make_fixnum (total_free_strings));
 
 #if GC_MARK_STACK == GC_USE_GCPROS_CHECK_ZOMBIES
   {
@@ -4289,13 +4500,6 @@ Garbage collection happens automatically if you cons more than
     }
 #endif
 
-  if (!NILP (Vpost_gc_hook))
-    {
-      int count = inhibit_garbage_collection ();
-      safe_run_hooks (Qpost_gc_hook);
-      unbind_to (count, Qnil);
-    }
-  
   return Flist (sizeof total / sizeof *total, total);
 }
 
@@ -4762,6 +4966,12 @@ mark_object (argptr)
     case Lisp_Int:
       break;
 
+#ifdef HAVE_LIBGMP
+    case Lisp_Bignum:
+      XBIGNUM (obj)->marked = 1;
+      break;
+#endif
+
     default:
       abort ();
     }
@@ -4803,8 +5013,8 @@ mark_buffer (buf)
 	      && ! XMARKBIT (XCAR (ptr->car))
 	      && GC_MARKERP (XCAR (ptr->car)))
 	    {
-	      XMARK (XCAR_AS_LVALUE (ptr->car));
-	      mark_object (&XCDR_AS_LVALUE (ptr->car));
+	      XMARK (XCAR (ptr->car));
+	      mark_object (&XCDR (ptr->car));
 	    }
 	  else
 	    mark_object (&ptr->car);
@@ -4815,7 +5025,7 @@ mark_buffer (buf)
 	    break;
 	}
 
-      mark_object (&XCDR_AS_LVALUE (tail));
+      mark_object (&XCDR (tail));
     }
   else
     mark_object (&buffer->undo_list);
@@ -4952,6 +5162,11 @@ gc_sweep ()
   sweep_weak_hash_tables ();
 
   sweep_strings ();
+
+#ifdef HAVE_LIBGMP
+  sweep_bignums ();
+#endif
+  
 #ifdef GC_CHECK_STRING_BYTES
   if (!noninteractive)
     check_string_bytes (1);
@@ -5321,10 +5536,10 @@ gc_sweep ()
 /* Debugging aids.  */
 
 DEFUN ("memory-limit", Fmemory_limit, Smemory_limit, 0, 0, 0,
-  /* Return the address of the last byte Emacs has allocated, divided by 1024.
-This may be helpful in debugging Emacs's memory usage.
-We divide the value by 1024 to make sure it fits in a Lisp integer.  */
-       ())
+  "Return the address of the last byte Emacs has allocated, divided by 1024.\n\
+This may be helpful in debugging Emacs's memory usage.\n\
+We divide the value by 1024 to make sure it fits in a Lisp integer.")
+  ()
 {
   Lisp_Object end;
 
@@ -5334,30 +5549,38 @@ We divide the value by 1024 to make sure it fits in a Lisp integer.  */
 }
 
 DEFUN ("memory-use-counts", Fmemory_use_counts, Smemory_use_counts, 0, 0, 0,
-  /* Return a list of counters that measure how much consing there has been.
-Each of these counters increments for a certain kind of object.
-The counters wrap around from the largest positive integer to zero.
-Garbage collection does not decrease them.
-The elements of the value are as follows:
-  (CONSES FLOATS VECTOR-CELLS SYMBOLS STRING-CHARS MISCS INTERVALS STRINGS)
-All are in units of 1 = one object consed
-except for VECTOR-CELLS and STRING-CHARS, which count the total length of
-objects consed.
-MISCS include overlays, markers, and some internal types.
-Frames, windows, buffers, and subprocesses count as vectors
-  (but the contents of a buffer's text do not count here).  */
-       ())
+  "Return a list of counters that measure how much consing there has been.\n\
+Each of these counters increments for a certain kind of object.\n\
+The counters wrap around from the largest positive integer to zero.\n\
+Garbage collection does not decrease them.\n\
+The elements of the value are as follows:\n\
+  (CONSES FLOATS VECTOR-CELLS SYMBOLS STRING-CHARS MISCS INTERVALS STRINGS)\n\
+All are in units of 1 = one object consed\n\
+except for VECTOR-CELLS and STRING-CHARS, which count the total length of\n\
+objects consed.\n\
+MISCS include overlays, markers, and some internal types.\n\
+Frames, windows, buffers, and subprocesses count as vectors\n\
+  (but the contents of a buffer's text do not count here).")
+  ()
 {
   Lisp_Object consed[8];
 
-  consed[0] = make_number (min (MOST_POSITIVE_FIXNUM, cons_cells_consed));
-  consed[1] = make_number (min (MOST_POSITIVE_FIXNUM, floats_consed));
-  consed[2] = make_number (min (MOST_POSITIVE_FIXNUM, vector_cells_consed));
-  consed[3] = make_number (min (MOST_POSITIVE_FIXNUM, symbols_consed));
-  consed[4] = make_number (min (MOST_POSITIVE_FIXNUM, string_chars_consed));
-  consed[5] = make_number (min (MOST_POSITIVE_FIXNUM, misc_objects_consed));
-  consed[6] = make_number (min (MOST_POSITIVE_FIXNUM, intervals_consed));
-  consed[7] = make_number (min (MOST_POSITIVE_FIXNUM, strings_consed));
+  XSETINT (consed[0],
+	   cons_cells_consed & ~(((EMACS_INT) 1) << (VALBITS - 1)));
+  XSETINT (consed[1],
+	   floats_consed & ~(((EMACS_INT) 1) << (VALBITS - 1)));
+  XSETINT (consed[2],
+	   vector_cells_consed & ~(((EMACS_INT) 1) << (VALBITS - 1)));
+  XSETINT (consed[3],
+	   symbols_consed & ~(((EMACS_INT) 1) << (VALBITS - 1)));
+  XSETINT (consed[4],
+	   string_chars_consed & ~(((EMACS_INT) 1) << (VALBITS - 1)));
+  XSETINT (consed[5],
+	   misc_objects_consed & ~(((EMACS_INT) 1) << (VALBITS - 1)));
+  XSETINT (consed[6],
+	   intervals_consed & ~(((EMACS_INT) 1) << (VALBITS - 1)));
+  XSETINT (consed[7],
+	   strings_consed & ~(((EMACS_INT) 1) << (VALBITS - 1)));
 
   return Flist (8, consed);
 }
@@ -5380,16 +5603,14 @@ void
 init_alloc_once ()
 {
   /* Used to do Vpurify_flag = Qt here, but Qt isn't set up yet!  */
-  purebeg = PUREBEG;
-  pure_size = PURESIZE;
   pure_bytes_used = 0;
-  pure_bytes_used_before_overflow = 0;
-
 #if GC_MARK_STACK || defined GC_MALLOC_CHECK
   mem_init ();
   Vdead = make_pure_string ("DEAD", 4, 4, 0);
 #endif
-
+#ifdef HAVE_SHM
+  pure_size = PURESIZE;
+#endif
   all_vectors = 0;
   ignore_warnings = 1;
 #ifdef DOUG_LEA_MALLOC
@@ -5403,6 +5624,10 @@ init_alloc_once ()
   init_marker ();
   init_float ();
   init_intervals ();
+
+#ifdef HAVE_LIBGMP
+  init_bignums ();
+#endif
 
 #ifdef REL_ALLOC
   malloc_hysteresis = 32;
@@ -5439,71 +5664,63 @@ init_alloc ()
 void
 syms_of_alloc ()
 {
-  DEFVAR_INT ("gc-cons-threshold", &gc_cons_threshold
-    /* *Number of bytes of consing between garbage collections.
-Garbage collection can happen automatically once this many bytes have been
-allocated since the last garbage collection.  All data types count.
+  DEFVAR_INT ("gc-cons-threshold", &gc_cons_threshold,
+    "*Number of bytes of consing between garbage collections.\n\
+Garbage collection can happen automatically once this many bytes have been\n\
+allocated since the last garbage collection.  All data types count.\n\n\
+Garbage collection happens automatically only when `eval' is called.\n\n\
+By binding this temporarily to a large number, you can effectively\n\
+prevent garbage collection during a part of the program.");
 
-Garbage collection happens automatically only when `eval' is called.
+  DEFVAR_INT ("pure-bytes-used", &pure_bytes_used,
+    "Number of bytes of sharable Lisp data allocated so far.");
 
-By binding this temporarily to a large number, you can effectively
-prevent garbage collection during a part of the program.  */);
+  DEFVAR_INT ("cons-cells-consed", &cons_cells_consed,
+    "Number of cons cells that have been consed so far.");
 
-  DEFVAR_INT ("pure-bytes-used", &pure_bytes_used
-    /* Number of bytes of sharable Lisp data allocated so far.  */);
+  DEFVAR_INT ("floats-consed", &floats_consed,
+    "Number of floats that have been consed so far.");
 
-  DEFVAR_INT ("cons-cells-consed", &cons_cells_consed
-    /* Number of cons cells that have been consed so far.  */);
+  DEFVAR_INT ("vector-cells-consed", &vector_cells_consed,
+    "Number of vector cells that have been consed so far.");
 
-  DEFVAR_INT ("floats-consed", &floats_consed
-    /* Number of floats that have been consed so far.  */);
+  DEFVAR_INT ("symbols-consed", &symbols_consed,
+    "Number of symbols that have been consed so far.");
 
-  DEFVAR_INT ("vector-cells-consed", &vector_cells_consed
-    /* Number of vector cells that have been consed so far.  */);
+  DEFVAR_INT ("string-chars-consed", &string_chars_consed,
+    "Number of string characters that have been consed so far.");
 
-  DEFVAR_INT ("symbols-consed", &symbols_consed
-    /* Number of symbols that have been consed so far.  */);
+  DEFVAR_INT ("misc-objects-consed", &misc_objects_consed,
+    "Number of miscellaneous objects that have been consed so far.");
 
-  DEFVAR_INT ("string-chars-consed", &string_chars_consed
-    /* Number of string characters that have been consed so far.  */);
+  DEFVAR_INT ("intervals-consed", &intervals_consed,
+    "Number of intervals that have been consed so far.");
 
-  DEFVAR_INT ("misc-objects-consed", &misc_objects_consed
-    /* Number of miscellaneous objects that have been consed so far.  */);
+  DEFVAR_INT ("strings-consed", &strings_consed,
+    "Number of strings that have been consed so far.");
 
-  DEFVAR_INT ("intervals-consed", &intervals_consed
-    /* Number of intervals that have been consed so far.  */);
+  DEFVAR_LISP ("purify-flag", &Vpurify_flag,
+    "Non-nil means loading Lisp code in order to dump an executable.\n\
+This means that certain objects should be allocated in shared (pure) space.");
 
-  DEFVAR_INT ("strings-consed", &strings_consed
-    /* Number of strings that have been consed so far.  */);
-
-  DEFVAR_LISP ("purify-flag", &Vpurify_flag
-    /* Non-nil means loading Lisp code in order to dump an executable.
-This means that certain objects should be allocated in shared (pure) space.  */);
-
-  DEFVAR_INT ("undo-limit", &undo_limit
-    /* Keep no more undo information once it exceeds this size.
-This limit is applied when garbage collection happens.
-The size is counted as the number of bytes occupied,
-which includes both saved text and other data.  */);
+  DEFVAR_INT ("undo-limit", &undo_limit,
+    "Keep no more undo information once it exceeds this size.\n\
+This limit is applied when garbage collection happens.\n\
+The size is counted as the number of bytes occupied,\n\
+which includes both saved text and other data.");
   undo_limit = 20000;
 
-  DEFVAR_INT ("undo-strong-limit", &undo_strong_limit
-    /* Don't keep more than this much size of undo information.
-A command which pushes past this size is itself forgotten.
-This limit is applied when garbage collection happens.
-The size is counted as the number of bytes occupied,
-which includes both saved text and other data.  */);
+  DEFVAR_INT ("undo-strong-limit", &undo_strong_limit,
+    "Don't keep more than this much size of undo information.\n\
+A command which pushes past this size is itself forgotten.\n\
+This limit is applied when garbage collection happens.\n\
+The size is counted as the number of bytes occupied,\n\
+which includes both saved text and other data.");
   undo_strong_limit = 30000;
 
-  DEFVAR_BOOL ("garbage-collection-messages", &garbage_collection_messages
-    /* Non-nil means display messages at start and end of garbage collection.  */);
+  DEFVAR_BOOL ("garbage-collection-messages", &garbage_collection_messages,
+    "Non-nil means display messages at start and end of garbage collection.");
   garbage_collection_messages = 0;
-
-  DEFVAR_LISP ("post-gc-hook", &Vpost_gc_hook
-    /* Hook run after garbage collection has finished.  */);
-  Vpost_gc_hook = Qnil;
-  Qpost_gc_hook = intern ("post-gc-hook");
-  staticpro (&Qpost_gc_hook);
 
   /* We build this in advance because if we wait until we need it, we might
      not be able to allocate the memory to hold it.  */
