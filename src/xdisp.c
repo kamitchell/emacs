@@ -7001,14 +7001,14 @@ static int
 display_echo_area (w)
      struct window *w;
 {
-  int i, no_message_p, window_height_changed_p, count;
+  int i, no_message_p, window_height_changed_p;
 
   /* Temporarily disable garbage collections while displaying the echo
      area.  This is done because a GC can print a message itself.
      That message would modify the echo area buffer's contents while a
      redisplay of the buffer is going on, and seriously confuse
      redisplay.  */
-  count = inhibit_garbage_collection ();
+  INHIBIT_GARBAGE_COLLECTION;
 
   /* If there is no message, we must call display_echo_area_1
      nevertheless because it resizes the window.  But we will have to
@@ -7025,7 +7025,7 @@ display_echo_area (w)
   if (no_message_p)
     echo_area_buffer[i] = Qnil;
 
-  unbind_to (count, Qnil);
+  REENABLE_GARBAGE_COLLECTION;
   return window_height_changed_p;
 }
 
@@ -8200,8 +8200,6 @@ update_tool_bar (f, save_match_data)
 	  /* Redisplay the tool-bar if we changed it.  */
 	  if (! NILP (Fequal (old_tool_bar, f->tool_bar_items)))
 	    w->update_mode_line = Qt;
-	  
-	  UNGCPRO;
 
 	  unbind_to (count, Qnil);
 	  set_buffer_internal_1 (prev);
