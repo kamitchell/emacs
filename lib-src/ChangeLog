@@ -1,15 +1,7 @@
-2003-08-25  Takaaki Ota  <Takaaki.Ota@am.sony.com>  (tiny change)
+2004-05-04  Thien-Thi Nguyen  <ttn@gnu.org>
 
-	* etags.c (consider_token): check C++ `operator' only when the
-	token len is long enough.
-
-2003-05-03  Dave Love  <fx@gnu.org>
-
-	* Makefile.in [HAVE_LIBMAIL]: Check HAVE_LIBLOCKFILE.
-
-2003-03-28  Daniel Bergstr,Av(Bm  <daniel.bergstrom@gis.ericsson.se>  (tiny change)
-
-	* etags.c (erlang_attribute): Account for error returned by erlang_atom.
+	* profile.c: Include config.h, not ../src/config.h.
+	Include systime.h, not ../src/systime.h.
 
 2003-03-18  Francesco Potort,Al(B  <pot@gnu.org>
 
