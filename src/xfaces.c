@@ -321,6 +321,21 @@ x_free_gc (f, gc)
 
 #define FACE_CACHE_BUCKETS_SIZE 1001
 
+/* A definition of XColor for non-X frames.  */
+
+#ifndef HAVE_X_WINDOWS
+
+typedef struct
+{
+  unsigned long pixel;
+  unsigned short red, green, blue;
+  char flags;
+  char pad;
+}
+XColor;
+
+#endif /* not HAVE_X_WINDOWS */
+
 /* Keyword symbols used for face attribute names.  */
 
 Lisp_Object QCfamily, QCheight, QCweight, QCslant, QCunderline;
@@ -6278,8 +6293,9 @@ realize_x_face (cache, attrs, c, base_face)
      int c;
      struct face *base_face;
 {
+  struct face *face;
 #ifdef HAVE_WINDOW_SYSTEM
-  struct face *face, *default_face;
+  struct face *default_face;
   struct frame *f;
   Lisp_Object stipple, overline, strike_through, box;
 
@@ -6487,8 +6503,8 @@ realize_x_face (cache, attrs, c, base_face)
     face->stipple = load_pixmap (f, stipple, &face->pixmap_w, &face->pixmap_h);
 
   xassert (FACE_SUITABLE_FOR_CHAR_P (face, c));
-  return face;
 #endif /* HAVE_WINDOW_SYSTEM */
+  return face;
 }
 
 
