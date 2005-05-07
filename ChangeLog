@@ -1,78 +1,9 @@
-2003-10-03  Boyd Lynn Gerber  <gerberb@zenez.com>  (tiny change)
+2005-05-08  Thien-Thi Nguyen  <ttn@gnu.org>
 
-	* configure.in (*-sysv5uw*, *-sysv5OpenUNIX*): New configurations.
+	* configure.in: Check for <pwd.h>.
+	* configure: Regenerate.
 
-2003-05-03  Dave Love  <fx@gnu.org>
-
-	* configure.in: When we have -llockfile, define HAVE_LIBMAIL, not
-	LIBMAIL.
-
-2003-04-08  Richard M. Stallman  <rms@gnu.org>
-
-	* configure.in: Put #include of jpeglib.h at start of line.
-
-2003-04-07  Andreas Schwab  <schwab@suse.de>
-
-	* configure.in: Avoid whitespace before preprocessor directive.
-	* configure: Rebuild.
-
-2003-04-06  Francesco Potort,Al(B  <pot@gnu.org>
-
-	* configure.in: Use the same configuration for all aix5, not just
-	aix5.1.
-
-2003-03-18  Francesco Potort,Al(B  <pot@gnu.org>
-
-	* Version 21.3 released.
-
-2003-03-16  Nelson H. F. Beebe  <beebe@math.utah.edu>  (tiny change)
-
-	* configure.in: Check for need for bigtoc support on IBM AIX for
-	solving a linker table overflow problem.
-
-2003-02-17  Klaus Zeitler  <kzeitler@lucent.com>
-
-	* configure.in: Set new hpux10-20.h as "major" include for 10.20.
-
-2002-12-09  Dave Love  <fx@gnu.org>
-
-	* configure.in (*-sunos5.8*, *-solaris2.8*): Delete configurations.
-
-2002-12-08  Dave Love  <fx@gnu.org>
-
-	* configure.in: Add targets s390-*-linux-gnu, mipsel-*-linux-gnu*.
-
-2002-11-22  Juanma Barranquero  <lektu@terra.es>
-
-	* config.guess, config.sub: Updated from master source.
-
-2002-11-14  Francesco Potorti`  <pot@gnu.org>
-
-	* configure.in (*-sunos5.8*, *-solaris2.8*): New configurations.
-
-2002-10-15  Richard M. Stallman  <rms@gnu.org>
-
-	* Makefile.in (bootstrap-lisp): Don't ignore errors.
-	Fix typo in .PHONY spec.
-
-2002-08-26  Kim F. Storm  <storm@cua.dk>
-
-	* Makefile.in (install-arch-indep): Do not remove DOC file
-	when it is the only DOC file installed; this is the case when
-	CANNOT_DUMP is defined.  From Joe Buehler (tiny change).
-
-2002-07-08  Dave Love  <fx@gnu.org>
-
-	* configure.in: Check safe/working versions of libjpeg and
-	libungif.
-
-2002-05-26  Paul Eggert  <eggert@twinsun.com>
-
-	* config.guess, config.sub: Updated from master source.
-
-2002-05-07  Andreas Schwab  <schwab@suse.de>
-
-	* configure.in: Fix the test for emacs_cv_speed_t.
+	* aclocal.m4: For each AC_DEFUN, quote first arg.
 
 2002-03-16  Eli Zaretskii  <eliz@is.elta.co.il>
 
