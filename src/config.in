@@ -74,13 +74,13 @@ Boston, MA 02111-1307, USA.  */
 /* Define if we have the PNG library.  */
 #undef HAVE_PNG
 
-/* Define if we have the JPEG library (version 6b or later).  */
+/* Define if we have the JPEG library.  */
 #undef HAVE_JPEG
 
 /* Define if we have the TIFF library.  */
 #undef HAVE_TIFF
 
-/* Define if we have the GIF library (version 4.1.0b1 or later).  */
+/* Define if we have the GIF library.  */
 #undef HAVE_GIF
 
 /* Define if libXaw3d is available.  */
@@ -183,6 +183,7 @@ Boston, MA 02111-1307, USA.  */
 #undef HAVE_UALARM
 #undef HAVE_SYS_WAIT_H
 #undef HAVE_STRINGS_H
+#undef HAVE_PWD_H
 
 #undef HAVE_LIBDNET
 #undef HAVE_LIBPTHREADS
@@ -219,7 +220,6 @@ Boston, MA 02111-1307, USA.  */
 
 /* Mail-file locking */
 #undef HAVE_LIBMAIL
-#undef HAVE_LIBLOCKFILE
 #undef HAVE_MAILLOCK_H
 #undef HAVE_TOUCHLOCK
 
