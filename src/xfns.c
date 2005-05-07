@@ -2320,7 +2320,9 @@ x_set_name (f, name, explicit)
 	int bytes, stringp;
 	Lisp_Object coding_system;
 
-	coding_system = Qcompound_text;
+	coding_system = Vlocale_coding_system;
+	if (NILP (coding_system))
+	  coding_system = Qcompound_text;
 	text.value = x_encode_text (name, coding_system, 0, &bytes, &stringp);
 	text.encoding = (stringp ? XA_STRING
 			 : FRAME_X_DISPLAY_INFO (f)->Xatom_COMPOUND_TEXT);
@@ -2425,7 +2427,9 @@ x_set_title (f, name, old_name)
 	int bytes, stringp;
 	Lisp_Object coding_system;
 
-	coding_system = Qcompound_text;
+	coding_system = Vlocale_coding_system;
+	if (NILP (coding_system))
+	  coding_system = Qcompound_text;
 	text.value = x_encode_text (name, coding_system, 0, &bytes, &stringp);
 	text.encoding = (stringp ? XA_STRING
 			 : FRAME_X_DISPLAY_INFO (f)->Xatom_COMPOUND_TEXT);
@@ -8750,8 +8754,8 @@ png_load (f, img)
   gamma_str = getenv ("SCREEN_GAMMA");
   screen_gamma = gamma_str ? atof (gamma_str) : 2.2;
 
-#if 0 /* Avoid double gamma correction for PNG images. */
   /* Tell the PNG lib to handle gamma correction for us.  */
+
 #if defined(PNG_READ_sRGB_SUPPORTED) || defined(PNG_WRITE_sRGB_SUPPORTED)
   if (png_get_sRGB (png_ptr, info_ptr, &intent))
     /* There is a special chunk in the image specifying the gamma.  */
@@ -8764,7 +8768,6 @@ png_load (f, img)
   else
     /* Use a default of 0.5 for the image gamma.  */
     png_set_gamma (png_ptr, screen_gamma, 0.5);
-#endif /* if 0 */
 
   /* Handle alpha channel by combining the image with a background
      color.  Do this only if a real alpha channel is supplied.  For
