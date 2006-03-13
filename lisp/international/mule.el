@@ -1528,7 +1528,7 @@ text, and convert it in the temporary buffer.  Otherwise, convert in-place."
 		       (setq len (+ (length encoding-name) 1
 				    (- (point) last-pos)))
 		       ;; According to the spec of CTEXT, it is not
-		       ;; necessary to produde this extra designation
+		       ;; necessary to produce this extra designation
 		       ;; sequence, but some buggy application
 		       ;; (e.g. crxvt-gb) requires it.
 		       (insert "\e(B")
@@ -1562,7 +1562,7 @@ text, and convert it in the temporary buffer.  Otherwise, convert in-place."
 (defcustom auto-coding-alist
   '(("\\.\\(arc\\|zip\\|lzh\\|zoo\\|[jew]ar\\|xpi\\)\\'" . no-conversion)
     ("\\.\\(ARC\\|ZIP\\|LZH\\|ZOO\\|[JEW]AR\\|XPI\\)\\'" . no-conversion)
-    ("\\.\\(sx[dmicw]\\|tar\\|tgz\\)\\'" . no-conversion)
+    ("\\.\\(sx[dmicw]\\|odt\\|tar\\|tgz\\)\\'" . no-conversion)
     ("\\.\\(gz\\|Z\\|bz\\|bz2\\|gpg\\)\\'" . no-conversion)
     ("\\.\\(jpe?g\\|png\\|gif\\|tiff?\\|p[bpgn]m\\)\\'" . no-conversion)
     ("/#[^/]+#\\'" . emacs-mule))
