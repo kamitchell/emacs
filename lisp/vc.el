@@ -1,13 +1,13 @@
 ;;; vc.el --- drive a version-control system from within Emacs
 
 ;; Copyright (C) 1992, 1993, 1994, 1995, 1996, 1997, 1998, 2000,
-;;   2001, 2002, 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+;;   2001, 2002, 2003, 2004, 2005, 2006 Free Software Foundation, Inc.
 
 ;; Author:     FSF (see below for full credits)
 ;; Maintainer: Andre Spiegel <spiegel@gnu.org>
 ;; Keywords: tools
 
-;; $Id$
+;; $Id: vc.el,v 1.56 2007/07/10 14:59:12 esr Exp $
 
 ;; This file is part of GNU Emacs.
 
@@ -29,7 +29,7 @@
 ;;; Credits:
 
 ;; VC was initially designed and implemented by Eric S. Raymond
-;; <esr@snark.thyrsus.com>.  Over the years, many people have
+;; <esr@snark.thyrsus.com> in 1992.  Over the years, many people have
 ;; contributed substantial amounts of work to VC.  These include:
 ;;   Per Cederqvist <ceder@lysator.liu.se>
 ;;   Paul Eggert <eggert@twinsun.com>
@@ -41,6 +41,38 @@
 ;;   Andre Spiegel <spiegel@gnu.org>
 ;;   Richard Stallman <rms@gnu.org>
 ;;   Thien-Thi Nguyen <ttn@gnu.org>
+;;
+;; In July 2007 ESR returned and redesigned the mode to cope better
+;; with modern version-control systems that do commits by fileset
+;; rather than per individual file.
+;;
+;; Features in the new version:
+;; * Key commands (vc-print-log = C-x l, vc-revert = C-x u, 
+;;   vc-rollback = C-x c, vc-update = C-x v +, vc-workfile-diff = C-x v -) 
+;;   now operate on filesets rather than individual files.
+;; * The fileset for a command is either (a) all marked files in VC-dired
+;;   mode, (b) the currently visited file if it's under version control,
+;;   or (c) the current directory if the visited buffer is not under
+;;   version control. 
+;;
+;; Regressions in the new version:
+;; * print-log no longer accepts a focus-version argument.
+;;
+;; If you maintain a client of the mode or customize it in your .emacs, 
+;; note that many functions whiche formally took single file arguments 
+;; now take a list of files.
+;;
+;; Not all features have yet been tested on all backends.  Here is the test 
+;; matrix.  'Y' = feature tested, 'n' = not tested, '-' = feature is not
+;; compatible with the VCS's model of the world:
+;;
+;;		C-v l	C-v u	C-v c	C-x -
+;; SCCS 	n	n	n	n
+;; RCS  	Y	Y	Y	Y
+;; CVS  	n	n	n	n
+;; MCVS  	n	n	n	n
+;; arch 	n	n	-	n
+;; SVN   	Y	Y	-	Y
 
 ;;; Commentary:
 
@@ -105,9 +137,7 @@
 ;;
 ;; * registered (file)
 ;;
-;;   Return non-nil if FILE is registered in this backend.  Both this
-;;   function as well as `state' should be careful to fail gracefully in the
-;;   event that the backend executable is absent.
+;;   Return non-nil if FILE is registered in this backend.
 ;;
 ;; * state (file)
 ;;
@@ -138,9 +168,9 @@
 ;; - latest-on-branch-p (file)
 ;;
 ;;   Return non-nil if the current workfile version of FILE is the latest
-;;   on its branch.  The default implementation always returns t, which
-;;   means that working with non-current versions is not supported by
-;;   default.
+;;   or tip version on its branch.  The default implementation always 
+;;   returns t, which means that working with non-current versions is
+;;   not supported by default.
 ;;
 ;; * checkout-model (file)
 ;;
@@ -217,6 +247,14 @@
 ;;   check-in comment.  The implementation should pass the value of
 ;;   vc-checkin-switches to the backend command.
 ;;
+;; - commit (files comment)
+;;
+;;   Commit changes in the specified list of files.  COMMENT is used as a
+;;   check-in comment.  The implementation should pass the value of
+;;   vc-checkin-switches to the backend command.  If present, this function
+;;   will be used for changeset commits in systems like Subversion.  
+;;   Otherwise VC will run the checkin function on individual files.
+;;
 ;; * find-version (file rev buffer)
 ;;
 ;;   Fetch revision REV of file FILE and put it into BUFFER.
@@ -224,12 +262,12 @@
 ;;   The implementation should pass the value of vc-checkout-switches
 ;;   to the backend command.
 ;;
-;; - checkout (file &optional editable rev)
+;; * checkout (file &optional editable rev)
 ;;
 ;;   Check out revision REV of FILE into the working area.  If EDITABLE
 ;;   is non-nil, FILE should be writable by the user and if locking is
 ;;   used for FILE, a lock should also be set.  If REV is non-nil, that
-;;   is the revision to check out (default is current workfile version).
+;;   is the revision to check out (default is current tip version).
 ;;   If REV is t, that means to check out the head of the current branch;
 ;;   if it is the empty string, check out the head of the trunk.
 ;;   The implementation should pass the value of vc-checkout-switches
@@ -242,13 +280,14 @@
 ;;   already been reverted from a version backup, and this function
 ;;   only needs to update the status of FILE within the backend.
 ;;
-;; - cancel-version (file editable)
+;; - rollback (files)
 ;;
-;;   Cancel the current workfile version of FILE, i.e. remove it from the
-;;   master.  EDITABLE non-nil means that FILE should be writable
-;;   afterwards, and if locking is used for FILE, then a lock should also
-;;   be set.  If this function is not provided, trying to cancel a
-;;   version is caught as an error.
+;;   Remove the tip version of each of FILES from the repository.  If
+;;   this function is not provided, trying to cancel a version is
+;;   caught as an error.  (Most backends don't provide it.)  (Also
+;;   note that older versions of this backend command were called
+;;   'cancel-version' and took a single file arg, not a list of
+;;   files.)
 ;;
 ;; - merge (file rev1 rev2)
 ;;
@@ -267,16 +306,11 @@
 ;;
 ;; HISTORY FUNCTIONS
 ;;
-;; * print-log (file &optional buffer)
+;; * print-log (files &optional buffer)
 ;;
-;;   Insert the revision log of FILE into BUFFER, or the *vc* buffer
-;;   if BUFFER is nil.
-;;
-;; - log-view-mode ()
-;;
-;;   Mode to use for the output of print-log.  This defaults to
-;;   `log-view-mode' and is expected to be changed (if at all) to a derived
-;;   mode of `log-view-mode'.
+;;   Insert the revision log for FILES into BUFFER, or the *vc* buffer
+;;   if BUFFER is nil.  (Note: older versions of this function expected
+;;   only a single file argument.)
 ;;
 ;; - show-log-entry (version)
 ;;
@@ -286,8 +320,7 @@
 ;;
 ;; - wash-log (file)
 ;;
-;;   Remove all non-comment information from the output of print-log.  The
-;;   default implementation of this function works for RCS-style logs.
+;;   Remove all non-comment information from the output of print-log.
 ;;
 ;; - logentry-check ()
 ;;
@@ -322,11 +355,6 @@
 ;;   BACKEND 'diff) to the backend command.  It should return a status
 ;;   of either 0 (no differences found), or 1 (either non-empty diff
 ;;   or the diff is run asynchronously).
-;;
-;; - revision-completion-table (file)
-;;
-;;   Return a completion table for existing revisions of FILE.
-;;   The default is to not use any completion table.
 ;;
 ;; - diff-tree (dir &optional rev1 rev2)
 ;;
@@ -588,7 +616,7 @@ to use -L and sets this variable to remember whether it worked."
   :group 'vc)
 
 (defcustom vc-allow-async-revert nil
-  "Specifies whether the diff during \\[vc-revert-buffer] may be asynchronous.
+  "Specifies whether the diff during \\[vc-revert] may be asynchronous.
 Enabling this option means that you can confirm a revert operation even
 if the local changes in the file have not been found and displayed yet."
   :type '(choice (const :tag "No" nil)
@@ -615,7 +643,7 @@ See `run-hooks'."
 
 ;;;###autoload
 (defcustom vc-checkin-hook nil
-  "Normal hook (list of functions) run after a checkin is done.
+  "Normal hook (list of functions) run after commit or file checkin.
 See also `log-edit-done-hook'."
   :type 'hook
   :options '(log-edit-comment-to-change-log)
@@ -623,7 +651,7 @@ See also `log-edit-done-hook'."
 
 ;;;###autoload
 (defcustom vc-before-checkin-hook nil
-  "Normal hook (list of functions) run before a file is checked in.
+  "Normal hook (list of functions) run before a commit or a file checkin.
 See `run-hooks'."
   :type 'hook
   :group 'vc)
@@ -842,20 +870,21 @@ and CVS."
   (interactive)
   (fillarray vc-file-prop-obarray 0))
 
-(defmacro with-vc-properties (file form settings)
-  "Execute FORM, then maybe set per-file properties for FILE.
+(defmacro with-vc-properties (files form settings)
+  "Execute FORM, then maybe set per-file properties for FILES.
 SETTINGS is an association list of property/value pairs.  After
 executing FORM, set those properties from SETTINGS that have not yet
 been updated to their corresponding values."
   (declare (debug t))
   `(let ((vc-touched-properties (list t)))
      ,form
-     (mapcar (lambda (setting)
+     (dolist (file ,files)
+       (mapc (lambda (setting)
 	       (let ((property (car setting)))
 		 (unless (memq property vc-touched-properties)
-		   (put (intern ,file vc-file-prop-obarray)
+		   (put (intern file vc-file-prop-obarray)
 			property (cdr setting)))))
-	     ,settings)))
+	     ,settings))))
 
 ;; Random helper functions
 
@@ -952,8 +981,6 @@ Else, add CODE to the process' sentinel."
      ;; lost.  Terminated processes get deleted automatically
      ;; anyway. -- cyd
      ((or (null proc) (eq (process-status proc) 'exit))
-      ;; Make sure we've read the process's output before going further.
-      (if proc (accept-process-output proc))
       (eval code))
      ;; If a process is running, add CODE to the sentinel
      ((eq (process-status proc) 'run)
@@ -961,24 +988,30 @@ Else, add CODE to the process' sentinel."
 	(set-process-sentinel proc
 	  `(lambda (p s)
 	     (with-current-buffer ',(current-buffer)
-               (save-excursion
-                (goto-char (process-mark p))
- 	        ,@(append (cdr (cdr (car   ;Strip off (save-exc (goto-char...)
-                           (cdr (cdr       ;Strip off (with-current-buffer buf
- 			    (car (cdr (cdr ;Strip off (lambda (p s)
-                             sentinel))))))))
- 			  (list `(vc-exec-after ',code)))))))))
+	       (goto-char (process-mark p))
+	       ,@(append (cdr (cdr (cdr ;strip off `with-current-buffer buf
+                                        ;             (goto-char...)'
+			   (car (cdr (cdr ;strip off `lambda (p s)'
+			    sentinel))))))
+			 (list `(vc-exec-after ',code))))))))
      (t (error "Unexpected process state"))))
   nil)
 
 (defvar vc-post-command-functions nil
   "Hook run at the end of `vc-do-command'.
 Each function is called inside the buffer in which the command was run
-and is passed 3 arguments: the COMMAND, the FILE and the FLAGS.")
+and is passed 3 arguments: the COMMAND, the FILES and the FLAGS.")
 
 (defvar w32-quote-process-args)
+
+(defun vc-delistify (filelist)
+  "Smash a FILELIST into a file list string suitable for info messages."
+  (cond ((not filelist) ".")
+        ((= (length filelist) 1) (car filelist)) 
+	(t (concat (car filelist) " " (vc-delistify (cdr filelist))))))
+
 ;;;###autoload
-(defun vc-do-command (buffer okstatus command file &rest flags)
+(defun vc-do-command (buffer okstatus command file-or-list &rest flags)
   "Execute a VC command, notifying user and checking for errors.
 Output from COMMAND goes to BUFFER, or *vc* if BUFFER is nil or the
 current buffer if BUFFER is t.  If the destination buffer is not
@@ -986,65 +1019,69 @@ already current, set it up properly and erase it.  The command is
 considered successful if its exit status does not exceed OKSTATUS (if
 OKSTATUS is nil, that means to ignore error status, if it is `async', that
 means not to wait for termination of the subprocess; if it is t it means to
-ignore all execution errors).  FILE is the
-name of the working file (may also be nil, to execute commands that
-don't expect a file name).  If an optional list of FLAGS is present,
+ignore all execution errors).  FILE-OR-LIST is the name of a working file;
+it may be a list of files or be nil (to execute commands that don't expect 
+a file name or set of files).  If an optional list of FLAGS is present,
 that is inserted into the command line before the filename."
-  (and file (setq file (expand-file-name file)))
-  (if vc-command-messages
-      (message "Running %s on %s..." command file))
-  (save-current-buffer
-    (unless (or (eq buffer t)
-                (and (stringp buffer)
-                     (string= (buffer-name) buffer))
-                (eq buffer (current-buffer)))
-      (vc-setup-buffer buffer))
-    (let ((squeezed (remq nil flags))
-	  (inhibit-read-only t)
-	  (status 0))
-      (when file
-	;; FIXME: file-relative-name can return a bogus result because
-	;; it doesn't look at the actual file-system to see if symlinks
-	;; come into play.
-	(setq squeezed (append squeezed (list (file-relative-name file)))))
-      (let ((exec-path (append vc-path exec-path))
-	    ;; Add vc-path to PATH for the execution of this command.
-	    (process-environment
-	     (cons (concat "PATH=" (getenv "PATH")
-			   path-separator
-			   (mapconcat 'identity vc-path path-separator))
-		   process-environment))
-	    (w32-quote-process-args t))
-	(if (and (eq okstatus 'async) (file-remote-p default-directory))
-	    ;; start-process does not support remote execution
-	    (setq okstatus nil))
-	(if (eq okstatus 'async)
-	    (let ((proc
-		   (let ((process-connection-type nil))
-		     (apply 'start-process command (current-buffer) command
-			    squeezed))))
-              (unless (active-minibuffer-window)
-                (message "Running %s in the background..." command))
-	      ;;(set-process-sentinel proc (lambda (p msg) (delete-process p)))
-	      (set-process-filter proc 'vc-process-filter)
-	      (vc-exec-after
-	       `(unless (active-minibuffer-window)
-                  (message "Running %s in the background... done" ',command))))
-	  (let ((buffer-undo-list t))
-            (setq status (apply 'process-file command nil t nil squeezed)))
-	  (when (and (not (eq t okstatus))
-                     (or (not (integerp status))
-                         (and okstatus (< okstatus status))))
-	    (pop-to-buffer (current-buffer))
-	    (goto-char (point-min))
-	    (shrink-window-if-larger-than-buffer)
-	    (error "Running %s...FAILED (%s)" command
-		   (if (integerp status) (format "status %d" status) status))))
-	(if vc-command-messages
-	    (message "Running %s...OK" command)))
-      (vc-exec-after
-       `(run-hook-with-args 'vc-post-command-functions ',command ',file ',flags))
-      status)))
+  ;; FIXME: file-relative-name can return a bogus result because
+  ;; it doesn't look at the actual file-system to see if symlinks
+  ;; come into play.
+  (let* ((files 
+	  (mapcar 'file-relative-name
+		  (cond ((not file-or-list) '())
+			((listp file-or-list) (mapcar 'expand-file-name file-or-list)) 
+			(t (list (expand-file-name file-or-list)))))))
+    (if vc-command-messages
+	(message "Running %s on %s..." command (vc-delistify files)))
+    (save-current-buffer
+      (unless (or (eq buffer t)
+		  (and (stringp buffer)
+		       (string= (buffer-name) buffer))
+		  (eq buffer (current-buffer)))
+	(vc-setup-buffer buffer))
+      (let ((squeezed (remq nil flags))
+	    (inhibit-read-only t)
+	    (status 0))
+	(when files
+	  (setq squeezed (nconc squeezed files)))
+	(let ((exec-path (append vc-path exec-path))
+	      ;; Add vc-path to PATH for the execution of this command.
+	      (process-environment
+	       (cons (concat "PATH=" (getenv "PATH")
+			     path-separator
+			     (mapconcat 'identity vc-path path-separator))
+		     process-environment))
+	      (w32-quote-process-args t))
+	  (if (and (eq okstatus 'async) (file-remote-p default-directory))
+	      ;; start-process does not support remote execution
+	      (setq okstatus nil))
+	  (if (eq okstatus 'async)
+	      (let ((proc
+		     (let ((process-connection-type nil))
+		       (apply 'start-process command (current-buffer) command
+			      squeezed))))
+		(unless (active-minibuffer-window)
+		  (message "Running %s in the background..." command))
+		;;(set-process-sentinel proc (lambda (p msg) (delete-process p)))
+		(set-process-filter proc 'vc-process-filter)
+		(vc-exec-after
+		 `(unless (active-minibuffer-window)
+		    (message "Running %s in the background... done" ',command))))
+	    (let ((buffer-undo-list t))
+	      (setq status (apply 'process-file command nil t nil squeezed)))
+	    (when (and (not (eq t okstatus))
+		       (or (not (integerp status))
+			   (and okstatus (< okstatus status))))
+	      (pop-to-buffer (current-buffer))
+	      (goto-char (point-min))
+	      (shrink-window-if-larger-than-buffer)
+	      (error "Running %s...FAILED (%s)" command
+		     (if (integerp status) (format "status %d" status) status))))
+	  (if vc-command-messages
+	      (message "Running %s...OK" command)))
+	(vc-exec-after
+	 `(run-hook-with-args 'vc-post-command-functions ',command ',file-or-list ',flags))
+	status))))
 
 (defun vc-position-context (posn)
   "Save a bit of the text around POSN in the current buffer.
@@ -1095,31 +1132,6 @@ Used by `vc-restore-buffer-context' to later restore the context."
 			   (vc-position-context (mark-marker))))
 	;; Make the right thing happen in transient-mark-mode.
 	(mark-active nil)
-	;; The new compilation code does not use compilation-error-list any
-	;; more, so the code below is now ineffective and might as well
-	;; be disabled.  -- Stef
-	;; ;; We may want to reparse the compilation buffer after revert
-	;; (reparse (and (boundp 'compilation-error-list) ;compile loaded
-	;; 	      ;; Construct a list; each elt is nil or a buffer
-	;; 	      ;; iff that buffer is a compilation output buffer
-	;; 	      ;; that contains markers into the current buffer.
-	;; 	      (save-current-buffer
-	;; 		(mapcar (lambda (buffer)
-	;; 			  (set-buffer buffer)
-	;; 			  (let ((errors (or
-	;; 					 compilation-old-error-list
-	;; 					 compilation-error-list))
-	;; 				(buffer-error-marked-p nil))
-	;; 			    (while (and (consp errors)
-	;; 					(not buffer-error-marked-p))
-	;; 			      (and (markerp (cdr (car errors)))
-	;; 				   (eq buffer
-	;; 				       (marker-buffer
-	;; 					(cdr (car errors))))
-	;; 				   (setq buffer-error-marked-p t))
-	;; 			      (setq errors (cdr errors)))
-	;; 			    (if buffer-error-marked-p buffer)))
-	;; 			(buffer-list)))))
 	(reparse nil))
     (list point-context mark-context reparse)))
 
@@ -1160,7 +1172,7 @@ CONTEXT is that which `vc-buffer-context' returns."
          (let ((new-mark (vc-find-position-by-context mark-context)))
            (if new-mark (set-mark new-mark))))))
 
-(defun vc-revert-buffer1 (&optional arg no-confirm)
+(defun vc-revert-internal (&optional arg no-confirm)
   "Revert buffer, keeping point and mark where user expects them.
 Try to be clever in the face of changes due to expanded version control
 key words.  This is important for typeahead to work as expected.
@@ -1274,7 +1286,7 @@ If VERBOSE is non-nil, query the user rather than using default parameters."
 	  ;; DO NOT revert the file without asking the user!
 	  (if (not visited) (find-file-other-window file))
 	  (if (yes-or-no-p "Revert to master version? ")
-	      (vc-revert-buffer)))
+	      (vc-revert)))
 	 (t ;; normal action
 	  (if (not verbose)
 	      (vc-checkin file nil comment)
@@ -1335,7 +1347,7 @@ If VERBOSE is non-nil, query the user rather than using default parameters."
 	  (if (not (yes-or-no-p
 		    "Revert to checked-in version, instead? "))
 	      (error "Checkout aborted")
-	    (vc-revert-buffer1 t t)
+	    (vc-revert-internal t t)
 	    (vc-checkout file t))))))))
 
 (defvar vc-dired-window-configuration)
@@ -1471,7 +1483,6 @@ first backend that could register the file is used."
 			(setq backup-inhibited t)))
 		    (message "Registering %s... done" file))))
 
-
 (defun vc-responsible-backend (file &optional register)
   "Return the name of a backend system that is responsible for FILE.
 The optional argument REGISTER means that a backend suitable for
@@ -1530,7 +1541,7 @@ rather than user editing!"
   (and (string= buffer-file-name file)
        (if keep
 	   (progn
-	     (vc-revert-buffer1 t noquery)
+	     (vc-revert-internal t noquery)
              ;; TODO: Adjusting view mode might no longer be necessary
              ;; after RMS change to files.el of 1999-08-08.  Investigate
              ;; this when we install the new VC.
@@ -1604,7 +1615,7 @@ After check-out, runs the normal hook `vc-checkout-hook'."
        (vc-up-to-date-p file)
        (vc-make-version-backup file))
   (with-vc-properties
-   file
+   (list file)
    (condition-case err
        (vc-call checkout file writable rev)
      (file-error
@@ -1634,7 +1645,7 @@ After check-out, runs the normal hook `vc-checkout-hook'."
 	(error "Steal canceled"))
     (message "Stealing lock on %s..." file)
     (with-vc-properties
-     file
+     (list file)
      (vc-call steal-lock file rev)
      `((vc-state . edited)))
     (vc-resynch-buffer file t t)
@@ -1672,7 +1683,7 @@ Runs the normal hook `vc-checkin-hook'."
      (or (and comment (string-match "[^\t\n ]" comment))
 	 (setq comment "*** empty log message ***"))
      (with-vc-properties
-      file
+      (list file)
       ;; Change buffers to get local value of vc-checkin-switches.
       (with-current-buffer (or (get-file-buffer file) (current-buffer))
 	(progn
@@ -1733,9 +1744,13 @@ the buffer contents as a comment."
       (dired-move-to-filename))
     (run-hooks after-hook 'vc-finish-logentry-hook)))
 
-;; Code for access to the comment ring
-
 ;; Additional entry points for examining version histories
+
+(defun vc-diff-mode ()
+  "Set up VC's speciall diff mode."
+  ;; Gnus-5.8.5 sets up an autoload for diff-mode, even if it's
+  ;; not available.  Work around that.
+  (if (require 'diff-mode nil t) (diff-mode)))
 
 ;;;###autoload
 (defun vc-diff (historic &optional not-urgent)
@@ -1756,8 +1771,6 @@ saving the buffer."
 	  (message "No changes to %s since latest version" file)
 	(vc-version-diff file nil nil)))))
 
-(defun vc-default-revision-completion-table (backend file) nil)
-
 (defun vc-version-diff (file rev1 rev2)
   "List the differences between FILE's versions REV1 and REV2.
 If REV1 is empty or nil it means to use the current workfile version;
@@ -1765,13 +1778,12 @@ REV2 empty or nil means the current file contents.  FILE may also be
 a directory, in that case, generate diffs between the correponding
 versions of all registered files in or below it."
   (interactive
-   (let* ((file (expand-file-name
-                 (read-file-name (if buffer-file-name
-                                     "File or dir to diff (default visited file): "
-                                   "File or dir to diff: ")
-                                 default-directory buffer-file-name t)))
-          (rev1-default nil) (rev2-default nil)
-          (completion-table (vc-call revision-completion-table file)))
+   (let ((file (expand-file-name
+                (read-file-name (if buffer-file-name
+                                    "File or dir to diff (default visited file): "
+                                  "File or dir to diff: ")
+                                default-directory buffer-file-name t)))
+         (rev1-default nil) (rev2-default nil))
      ;; compute default versions based on the file state
      (cond
       ;; if it's a directory, don't supply any version default
@@ -1783,25 +1795,21 @@ versions of all registered files in or below it."
       ;; if the file is not locked, use last and previous version as default
       (t
        (setq rev1-default (vc-call previous-version file
-				   (vc-workfile-version file)))
+                                   (vc-workfile-version file)))
        (if (string= rev1-default "") (setq rev1-default nil))
        (setq rev2-default (vc-workfile-version file))))
      ;; construct argument list
-     (let* ((rev1-prompt (if rev1-default
-			     (concat "Older version (default "
-				     rev1-default "): ")
-			   "Older version: "))
-	    (rev2-prompt (concat "Newer version (default "
-				 (or rev2-default "current source") "): "))
-	    (rev1 (if completion-table
-		      (completing-read rev1-prompt completion-table
-                                       nil nil nil nil rev1-default)
-		    (read-string rev1-prompt nil nil rev1-default)))
-	    (rev2 (if completion-table
-		      (completing-read rev2-prompt completion-table
-                                       nil nil nil nil rev2-default)
-		    (read-string rev2-prompt nil nil rev2-default))))
-       (list file rev1 rev2))))
+     (list file
+           (read-string (if rev1-default
+			    (concat "Older version (default "
+				    rev1-default "): ")
+			  "Older version: ")
+			nil nil rev1-default)
+           (read-string (if rev2-default
+			    (concat "Newer version (default "
+				    rev2-default "): ")
+			  "Newer version (default current source): ")
+			nil nil rev2-default))))
   (if (file-directory-p file)
       ;; recursive directory diff
       (progn
@@ -1834,9 +1842,7 @@ versions of all registered files in or below it."
 	  (message "No changes to %s since latest version" file))
 	nil)
     (pop-to-buffer (current-buffer))
-    ;; Gnus-5.8.5 sets up an autoload for diff-mode, even if it's
-    ;; not available.  Work around that.
-    (if (require 'diff-mode nil t) (diff-mode))
+    (vc-diff-mode)
     (vc-exec-after '(let ((inhibit-read-only t))
 		      (if (eq (buffer-size) 0)
 			  (insert "No differences found.\n"))
@@ -1956,16 +1962,7 @@ The meaning of REV1 and REV2 is the same as for `vc-version-diff'."
   "Visit version REV of the current file in another window.
 If the current file is named `F', the version is named `F.~REV~'.
 If `F.~REV~' already exists, use it instead of checking it out again."
-  (interactive
-   (save-current-buffer
-     (vc-ensure-vc-buffer)
-     (let ((completion-table
-            (vc-call revision-completion-table buffer-file-name))
-           (prompt "Version to visit (default is workfile version): "))
-       (list
-        (if completion-table
-            (completing-read prompt completion-table)
-          (read-string prompt))))))
+  (interactive "sVersion to visit (default is workfile version): ")
   (vc-ensure-vc-buffer)
   (let* ((file buffer-file-name)
 	 (version (if (string-equal rev "")
@@ -2128,7 +2125,7 @@ See Info node `Merging'."
     (define-key vmap "t" 'vc-dired-toggle-terse-mode)
     map))
 
-(define-derived-mode vc-dired-mode dired-mode "Dired under "
+(define-derived-mode vc-dired-mode dired-mode "Dired under VC"
   "The major mode used in VC directory buffers.
 
 It works like Dired, but lists only files under version control, with
@@ -2188,8 +2185,6 @@ There is a special command, `*l', to mark all files currently locked."
        (set (make-local-variable 'dired-actual-switches)
             vc-dired-switches))
   (set (make-local-variable 'vc-dired-terse-mode) vc-dired-terse-display)
-  (setq mode-name (concat mode-name (symbol-name (vc-responsible-backend 
-						  default-directory))))
   (setq vc-dired-mode t))
 
 (defun vc-dired-toggle-terse-mode ()
@@ -2248,9 +2243,7 @@ Called by dired after any portion of a vc-dired buffer has been read in."
 	;; if the backend supports it, get the state
 	;; of all files in this directory at once
 	(let ((backend (vc-responsible-backend subdir)))
-	  ;; check `backend' can really handle `subdir'.
-	  (if (and (vc-call-backend backend 'responsible-p subdir)
-		   (vc-find-backend-function backend 'dir-state))
+	  (if (vc-find-backend-function backend 'dir-state)
 	      (vc-call-backend backend 'dir-state subdir)))
         (forward-line 1)
         ;; erase (but don't remove) the "total" line
@@ -2455,37 +2448,21 @@ allowed and simply skipped)."
 ;; Miscellaneous other entry points
 
 ;;;###autoload
-(defun vc-print-log (&optional focus-rev)
-  "List the change log of the current buffer in a window.
-If FOCUS-REV is non-nil, leave the point at that revision."
-  (interactive)
-  (vc-ensure-vc-buffer)
-  (let ((file buffer-file-name))
-    (or focus-rev (setq focus-rev (vc-workfile-version file)))
+(defun vc-print-log (allfiles)
+  "List the change log of the current fileset in a window."
+  (interactive "P")
+  (let* ((context (vc-deduce-fileset allfiles))
+	 (backend (car context))
+	 (files (cdr context))
+	 (focus-rev (vc-workfile-version (car files))))
     ;; Don't switch to the output buffer before running the command,
     ;; so that any buffer-local settings in the vc-controlled
     ;; buffer can be accessed by the command.
-    (condition-case err
-        (progn
-          (vc-call print-log file "*vc-change-log*")
-          (set-buffer "*vc-change-log*"))
-      (wrong-number-of-arguments
-       ;; If this error came from the above call to print-log, try again
-       ;; without the optional buffer argument (for backward compatibility).
-       ;; Otherwise, resignal.
-       (if (or (not (eq (cadr err)
-                        (indirect-function
-                         (vc-find-backend-function (vc-backend file)
-                                                   'print-log))))
-               (not (eq (caddr err) 2)))
-           (signal (car err) (cdr err))
-         ;; for backward compatibility
-         (vc-call print-log file)
-         (set-buffer "*vc*"))))
-    (pop-to-buffer (current-buffer))
+    (vc-call-backend backend 'print-log files "*vc-change-log*")
+    (pop-to-buffer "*vc-change-log*")
     (vc-exec-after
      `(let ((inhibit-read-only t))
-    	(vc-call-backend ',(vc-backend file) 'log-view-mode)
+    	(log-view-mode)
 	(goto-char (point-max)) (forward-line -1)
 	(while (looking-at "=*\n")
 	  (delete-char (- (match-end 0) (match-beginning 0)))
@@ -2493,14 +2470,11 @@ If FOCUS-REV is non-nil, leave the point at that revision."
 	(goto-char (point-min))
 	(if (looking-at "[\b\t\n\v\f\r ]+")
 	    (delete-char (- (match-end 0) (match-beginning 0))))
-	;; (shrink-window-if-larger-than-buffer)
-	;; move point to the log entry for the current version
-	(vc-call-backend ',(vc-backend file)
-			 'show-log-entry
-			 ',focus-rev)
+	(shrink-window-if-larger-than-buffer)
+	;; move point to the log entry for the focus revision
+	(vc-call-backend ',backend 'show-log-entry ',focus-rev)
         (set-buffer-modified-p nil)))))
 
-(defun vc-default-log-view-mode (backend) (log-view-mode))
 (defun vc-default-show-log-entry (backend rev)
   (with-no-warnings
    (log-view-goto-rev rev)))
@@ -2510,99 +2484,159 @@ If FOCUS-REV is non-nil, leave the point at that revision."
   (if (vc-find-backend-function backend 'print-log)
       (with-current-buffer "*vc*"
 	(vc-call print-log file)
-	(vc-call wash-log file)
+	(vc-call wash-log)
 	(buffer-string))))
 
-(defun vc-default-wash-log (backend file)
-  "Remove all non-comment information from log output.
-This default implementation works for RCS logs; backends should override
-it if their logs are not in RCS format."
-  (let ((separator (concat "^-+\nrevision [0-9.]+\ndate: .*\n"
-			   "\\(branches: .*;\n\\)?"
-			   "\\(\\*\\*\\* empty log message \\*\\*\\*\n\\)?")))
-    (goto-char (point-max)) (forward-line -1)
-    (while (looking-at "=*\n")
-      (delete-char (- (match-end 0) (match-beginning 0)))
-      (forward-line -1))
-    (goto-char (point-min))
-    (if (looking-at "[\b\t\n\v\f\r ]+")
-	(delete-char (- (match-end 0) (match-beginning 0))))
-    (goto-char (point-min))
-    (re-search-forward separator nil t)
-    (delete-region (point-min) (point))
-    (while (re-search-forward separator nil t)
-      (delete-region (match-beginning 0) (match-end 0)))))
+;;;###autoload
+(defun vc-workfile-diff (&optional allfiles)
+  "Report diffs between checked-out files and the workfile version in the repo."
+  (interactive "P")
+  (let* ((context (vc-deduce-fileset allfiles))
+	 (backend (car context))
+	 (files (cdr context)))
+    (vc-setup-buffer "*vc-diff*")
+    (not-modified)
+    (message "Finding changes...")
+    (dolist (file files)
+      (unless (vc-workfile-unchanged-p file)
+	(vc-diff-internal file (vc-workfile-version file) nil)))
+    ;; Did changes get generated into the buffer?
+    (if (buffer-modified-p)
+	(progn
+	  (pop-to-buffer "*vc-diff*")
+	  (vc-diff-mode)
+	  (goto-char (point-min))
+	  (shrink-window-if-larger-than-buffer))
+      (message "No changes to %s since repository version(s)" 
+	       (vc-delistify files)))))
 
 ;;;###autoload
-(defun vc-revert-buffer ()
-  "Revert the current buffer's file to the version it was based on.
+(defun vc-revert (&optional allfiles)
+  "Revert working copies of the selected fileset to their repository contents.
 This asks for confirmation if the buffer contents are not identical
-to that version.  This function does not automatically pick up newer
-changes found in the master file; use \\[universal-argument] \\[vc-next-action] to do so."
-  (interactive)
-  (vc-ensure-vc-buffer)
-  ;; Make sure buffer is saved.  If the user says `no', abort since
-  ;; we cannot show the changes and ask for confirmation to discard them.
-  (vc-buffer-sync nil)
-  (let ((file buffer-file-name)
-	;; This operation should always ask for confirmation.
-	(vc-suppress-confirm nil)
-	(obuf (current-buffer))
-	status)
-    (if (vc-up-to-date-p file)
-        (unless (yes-or-no-p "File seems up-to-date.  Revert anyway? ")
-          (error "Revert canceled")))
-    (unless (vc-workfile-unchanged-p file)
-      (message "Finding changes...")
-      ;; vc-diff selects the new window, which is not what we want:
-      ;; if the new window is on another frame, that'd require the user
-      ;; moving her mouse to answer the yes-or-no-p question.
-      (let* ((vc-disable-async-diff (not vc-allow-async-revert))
-             (win (save-selected-window
-                    (setq status (vc-diff nil t)) (selected-window))))
-	(vc-exec-after `(message nil))
-	(when status
-	  (unwind-protect
-	      (unless (yes-or-no-p "Discard changes? ")
-		(error "Revert canceled"))
-	    (select-window win)
-	    (if (one-window-p t)
-		(if (window-dedicated-p (selected-window))
-		    (make-frame-invisible))
-	      (delete-window))))))
-    (set-buffer obuf)
-    ;; Do the reverting
-    (message "Reverting %s..." file)
-    (vc-revert-file file)
-    (message "Reverting %s...done" file)))
+to the repository version (except for keyword expansion)."
+  (interactive "P")
+  (let* ((context (vc-deduce-fileset allfiles))
+	 (backend (car context))
+	 (files (cdr context)))
+    ;; If any of the files is visited by the current buffer, make
+    ;; sure buffer is saved.  If the user says `no', abort since
+    ;; we cannot show the changes and ask for confirmation to
+    ;; discard them.
+    (if (or (not files) (memq (buffer-file-name) files))
+	(vc-buffer-sync nil))
+    (dolist (file files)
+      (if (buffer-modified-p (get-file-buffer file))
+	  (error "Please kill or save all modified buffers before reverting."))
+      (if (vc-up-to-date-p file)
+	  (unless (yes-or-no-p (format "%s seems up-to-date.  Revert anyway? " file))
+	    (error "Revert canceled"))))
+    ;; Accumulate changes associated with the fileset
+    (vc-setup-buffer "*vc-diff*")
+    (not-modified)
+    (message "Finding changes...")
+    (dolist (file files)
+      (unless (vc-workfile-unchanged-p file)
+	(let ((vc-disable-async-diff t))
+	  (vc-diff-internal file (vc-workfile-version file) nil))))
+    ;; Did changes get generated into the buffer?
+    (if (buffer-modified-p)
+	(progn
+	  (pop-to-buffer "*vc-diff*")
+	  (vc-diff-mode)
+	  (goto-char (point-min))
+	  (shrink-window-if-larger-than-buffer)
+	  (unless (yes-or-no-p "Discard changes? ")
+	    (error "Revert canceled"))
+	  (delete-windows-on "*vc-diff*")
+	  (kill-buffer "*vc-diff*")
+	  ;; Do the actual reversions
+	  (dolist (file files)
+	    (message "Reverting %s..." (vc-delistify files))
+	    (vc-revert-file file)
+	    (message "Reverting %s...done" (vc-delistify files))))
+      (message "No changes to %s since the repository version(s)" 
+	       (vc-delistify files)))))
 
 ;;;###autoload
-(defun vc-update ()
-  "Update the current buffer's file to the latest version on its branch.
-If the file contains no changes, and is not locked, then this simply replaces
-the working file with the latest version on its branch.  If the file contains
-changes, and the backend supports merging news, then any recent changes from
-the current branch are merged into the working file."
-  (interactive)
-  (vc-ensure-vc-buffer)
-  (vc-buffer-sync nil)
-  (let ((file buffer-file-name))
-    (if (vc-up-to-date-p file)
-        (vc-checkout file nil "")
-      (if (eq (vc-checkout-model file) 'locking)
-          (if (eq (vc-state file) 'edited)
-              (error
-               (substitute-command-keys
-           "File is locked--type \\[vc-revert-buffer] to discard changes"))
-            (error
-             (substitute-command-keys
-           "Unexpected file state (%s)--type \\[vc-next-action] to correct")
-                   (vc-state file)))
-        (if (not (vc-find-backend-function (vc-backend file) 'merge-news))
-            (error "Sorry, merging news is not implemented for %s"
-                   (vc-backend file))
-          (vc-call merge-news file)
-          (vc-resynch-window file t t))))))
+(defun vc-rollback (allfiles)
+  "Roll back (remove) the most recent changeset committed to the repository.
+This may be either a file-level or a repository-level operation,
+depending on the underlying version-control system."
+  (interactive "P")
+  (let* ((context (vc-deduce-fileset allfiles))
+	 (backend (car context))
+	 (files (cdr context)))
+    ;; If any of the files is visited by the current buffer, make
+    ;; sure buffer is saved.  If the user says `no', abort since
+    ;; we cannot show the changes and ask for confirmation to
+    ;; discard them.
+    (if (or (not files) (memq (buffer-file-name) files))
+	(vc-buffer-sync nil))
+    (dolist (file files)
+      (if (buffer-modified-p (get-file-buffer file))
+	  (error "Please kill or save all modified buffers before rollback."))
+      (if (not (vc-up-to-date-p file))
+	  (error "Please revert all modified workfiles before rollback.")))
+    ;; Accumulate changes associated with the fileset
+    (vc-setup-buffer "*vc-diff*")
+    (not-modified)
+    (message "Finding changes...")
+    (dolist (file files)
+      (unless (vc-workfile-unchanged-p file)
+	(let* ((vc-disable-async-diff t)
+	       (this (vc-workfile-version file))
+	       (last (vc-previous-version file this)))
+	  (vc-diff-internal file last this))))
+    ;; Display changes 
+    (pop-to-buffer "*vc-diff*")
+    (vc-diff-mode)
+    (goto-char (point-min))
+    (shrink-window-if-larger-than-buffer)
+    (unless (yes-or-no-p "Discard these revisions? ")
+      (error "Rollback canceled"))
+    (delete-windows-on "*vc-diff*")
+    (kill-buffer"*vc-diff*")
+    ;; Do the actual reversions
+    (message "Rolling back %s..." (vc-delistify files))
+    (with-vc-properties
+     files
+     (vc-call-backend backend 'rollback files)
+     `((vc-state . ,'up-to-date)
+       (vc-checkout-time . , (nth 5 (file-attributes file)))
+       (vc-workfile-version . nil)))
+    (mapc (lambda (f) (vc-resynch-buffer f t t)) files)
+    (message "Rolling back %s...done" (vc-delistify files))))
+
+;;;###autoload
+(defun vc-update (allfiles)
+  "Update the current fileset's files to their tip versions.
+For each one that contains no changes, and is not locked, then this simply 
+replaces the work file with the latest version on its branch.  If the file 
+contains changes, and the backend supports merging news, then any recent 
+changes from the current branch are merged into the working file."
+  (interactive "P")
+  (let* ((context (vc-deduce-fileset allfiles))
+	 (files (cdr context)))
+    (dolist (file files)
+      (if (buffer-modified-p (get-file-buffer file))
+	  (error "Please kill or save all modified buffers before updating."))
+      (if (vc-up-to-date-p file)
+	  (vc-checkout file nil "")
+	(if (eq (vc-checkout-model file) 'locking)
+	    (if (eq (vc-state file) 'edited)
+		(error
+		 (substitute-command-keys
+		  "File is locked--type \\[vc-revert] to discard changes"))
+	      (error
+	       (substitute-command-keys
+		"Unexpected file state (%s)--type \\[vc-next-action] to correct")
+	       (vc-state file)))
+	  (if (not (vc-find-backend-function (vc-backend file) 'merge-news))
+	      (error "Sorry, merging news is not implemented for %s"
+		     (vc-backend file))
+	    (vc-call merge-news file)
+	    (vc-resynch-buffer file t t)))))))
 
 (defun vc-version-backup-file (file &optional rev)
   "Return name of backup file for revision REV of FILE.
@@ -2646,9 +2680,9 @@ return its name; otherwise return nil."
       (message "Checking out %s...done" file))))
 
 (defun vc-revert-file (file)
-  "Revert FILE back to the version it was based on."
+  "Revert FILE back to the repository version it was based on."
   (with-vc-properties
-   file
+   (list file)
    (let ((backup-file (vc-version-backup-file file)))
      (when backup-file
        (copy-file backup-file file 'ok-if-already-exists 'keep-date)
@@ -2658,52 +2692,45 @@ return its name; otherwise return nil."
      (vc-checkout-time . ,(nth 5 (file-attributes file)))))
   (vc-resynch-buffer file t t))
 
-;;;###autoload
-(defun vc-cancel-version (norevert)
-  "Get rid of most recently checked in version of this file.
-A prefix argument NOREVERT means do not revert the buffer afterwards."
-  (interactive "P")
-  (vc-ensure-vc-buffer)
-  (let* ((file buffer-file-name)
-	 (backend (vc-backend file))
-         (target (vc-workfile-version file)))
-    (cond
-     ((not (vc-find-backend-function backend 'cancel-version))
-      (error "Sorry, canceling versions is not supported under %s" backend))
-     ((not (vc-call latest-on-branch-p file))
-      (error "This is not the latest version; VC cannot cancel it"))
-     ((not (vc-up-to-date-p file))
-      (error "%s" (substitute-command-keys "File is not up to date; use \\[vc-revert-buffer] to discard changes"))))
-    (if (null (yes-or-no-p (format "Remove version %s from master? " target)))
-	(error "Aborted")
-      (setq norevert (or norevert (not
-          (yes-or-no-p "Revert buffer to most recent remaining version? "))))
+(defun vc-deduce-fileset (&optional ignorefile)
+  "Deduce a a set of files and a backend to apply an operation to.
 
-      (message "Removing last change from %s..." file)
-      (with-vc-properties
-       file
-       (vc-call cancel-version file norevert)
-       `((vc-state . ,(if norevert 'edited 'up-to-date))
-	 (vc-checkout-time . ,(if norevert
-				0
-			      (nth 5 (file-attributes file))))
-	 (vc-workfile-version . nil)))
-      (message "Removing last change from %s...done" file)
+If we're in VC-dired-mode, the fileset is the list of marked
+files (the empty list if there are no marked files).  Otherwise,
+if we're looking at a buffer visiting a version-controlled file
+and ignorefile (typically passed from a prefix arg) is nil. the
+fileset is a singleton containing the relative filename.
+Otherwise, if we're in a directory with a responsible back end,
+the fileset is the empty list
 
-      (cond
-       (norevert ;; clear version headers and mark the buffer modified
-	(set-visited-file-name file)
-	(when (not vc-make-backup-files)
-	  ;; inhibit backup for this buffer
-	  (make-local-variable 'backup-inhibited)
-	  (setq backup-inhibited t))
-	(setq buffer-read-only nil)
-	(vc-clear-headers)
-	(vc-mode-line file)
-	(vc-dired-resynch-file file))
-       (t ;; revert buffer to file on disk
-	(vc-resynch-buffer file t t)))
-      (message "Version %s has been removed from the master" target))))
+Deduce a backend from either the first file in the fileset or the
+default directory if the fileset is empty. If no backend is willing
+to take responsibility, we're looking at a non-version-controlled 
+directory and we throw an error.
+
+Return a list with the backend as car and the expanded fileset as its cdr,"
+  (let* ((files
+	 (cond (vc-dired-mode 
+		(let ((regexp (dired-marker-regexp))
+		      (marked '()))
+		  (save-excursion
+		    (goto-char (point-min))
+		    (while (re-search-forward regexp nil t)
+		      (if (setq filename (dired-get-filename nil t))
+			  (setq marked (append marked (list filename))))))
+		  marked))
+	       ((and (not ignorefile) (vc-backend buffer-file-name))
+		(list buffer-file-name))
+	       (t '())))
+	(indicator
+	 (if files (car files) default-directory))
+	(backend
+	 (catch 'found
+	   (dolist (trial-backend vc-handled-backends)
+	     (if (vc-call-backend trial-backend 'responsible-p indicator)
+		 (throw 'found trial-backend)))
+	   (error "No version-control system is active here."))))
+    (cons backend files)))
 
 ;;;###autoload
 (defun vc-switch-backend (file backend)
@@ -2719,32 +2746,25 @@ To get a prompt, use a prefix argument."
         (error "There is no version-controlled file in this buffer"))
     (let ((backend (vc-backend buffer-file-name))
 	  (backends nil))
-      (unwind-protect
-	  (progn
-	    (unless backend
-	      (error "File %s is not under version control" buffer-file-name))
-	    ;; Find the registered backends.
-	    (dolist (backend vc-handled-backends)
-	      (when (vc-call-backend backend 'registered buffer-file-name)
-		(push backend backends)))
-	    ;; Find the next backend.
-	    (let ((def (car (delq backend
-				  (append (memq backend backends) backends))))
-		  (others (delete backend backends)))
-	      (cond
-	       ((null others) (error "No other backend to switch to"))
-	       (current-prefix-arg
-		(intern
-		 (upcase
-		  (completing-read
-		   (format "Switch to backend [%s]: " def)
-		   (mapcar (lambda (b) (list (downcase (symbol-name b)))) backends)
-		   nil t nil nil (downcase (symbol-name def))))))
-	       (t def))))
-	;; Calling the `registered' method can mess up the file
-	;; properties, so we want to revert them to what they were.
-	(if (and backend (delete backend backends))
-	    (vc-call-backend backend 'registered buffer-file-name))))))
+      (unless backend
+        (error "File %s is not under version control" buffer-file-name))
+      ;; Find the registered backends.
+      (dolist (backend vc-handled-backends)
+	(when (vc-call-backend backend 'registered buffer-file-name)
+	  (push backend backends)))
+      ;; Find the next backend.
+      (let ((def (car (delq backend (append (memq backend backends) backends))))
+	    (others (delete backend backends)))
+	(cond
+	 ((null others) (error "No other backend to switch to"))
+	 (current-prefix-arg
+	  (intern
+	   (upcase
+	    (completing-read
+	     (format "Switch to backend [%s]: " def)
+	     (mapcar (lambda (b) (list (downcase (symbol-name b)))) backends)
+	     nil t nil nil (downcase (symbol-name def))))))
+       (t def))))))
   (unless (eq backend (vc-backend file))
     (vc-file-clearprops file)
     (vc-file-setprop file 'vc-backend backend)
@@ -2946,11 +2966,7 @@ log entries should be gathered."
   (vc-call-backend (vc-responsible-backend default-directory)
                    'update-changelog args))
 
-(defalias 'vc-cvs-update-changelog 'vc-update-changelog-rcs2log)
-(defalias 'vc-rcs-update-changelog 'vc-update-changelog-rcs2log)
-;; FIXME: This should probably be moved to vc-rcs.el and replaced in
-;; vc-cvs.el by code using cvs2cl.
-(defun vc-update-changelog-rcs2log (files)
+(defun vc-default-update-changelog (backend files)
   "Default implementation of update-changelog.
 Uses `rcs2log' which only works for RCS and CVS."
   ;; FIXME: We (c|sh)ould add support for cvs2cl
@@ -2991,7 +3007,9 @@ Uses `rcs2log' which only works for RCS and CVS."
                                     (mapcar
                                      (lambda (f)
                                        (file-relative-name
-                                        (expand-file-name f odefault)))
+                                        (if (file-name-absolute-p f)
+                                            f
+                                          (concat odefault f))))
                                      files)))
                        "done"
 		     (pop-to-buffer (get-buffer-create "*vc*"))
@@ -3059,13 +3077,13 @@ cover the range from the oldest annotation to the newest."
     ;; Run through this file and find the oldest and newest dates annotated.
     (save-excursion
       (goto-char (point-min))
-      (while (not (eobp))
-        (when (setq date (vc-call-backend vc-annotate-backend 'annotate-time))
-          (if (> date newest)
-              (setq newest date))
-          (if (< date oldest)
-              (setq oldest date)))
-        (forward-line 1)))
+      (while (setq date (prog1 (vc-call-backend vc-annotate-backend
+                                                'annotate-time)
+                          (forward-line 1)))
+	(if (> date newest)
+	    (setq newest date))
+	(if (< date oldest)
+	    (setq oldest date))))
     (vc-annotate-display
      (/ (- (if full newest current) oldest)
         (vc-annotate-oldest-in-map vc-annotate-color-map))
@@ -3130,9 +3148,9 @@ use; you may override this using the second optional arg MODE."
 	 (vc-annotate-display-default (or vc-annotate-ratio 1.0)))
         ;; One of the auto-scaling modes
 	((eq vc-annotate-display-mode 'scale)
-	 (vc-exec-after `(vc-annotate-display-autoscale)))
+	 (vc-annotate-display-autoscale))
 	((eq vc-annotate-display-mode 'fullscale)
-	 (vc-exec-after `(vc-annotate-display-autoscale t)))
+	 (vc-annotate-display-autoscale t))
 	((numberp vc-annotate-display-mode) ; A fixed number of days lookback
 	 (vc-annotate-display-default
 	  (/ vc-annotate-display-mode
@@ -3209,13 +3227,9 @@ colors. `vc-annotate-background' specifies the background color."
         (set (make-local-variable 'vc-annotate-parent-rev) rev)
         (set (make-local-variable 'vc-annotate-parent-display-mode)
              display-mode)))
-
-    (vc-exec-after
-     `(progn
-        (when ,current-line
-          (goto-line ,current-line ,temp-buffer-name))
-        (unless (active-minibuffer-window)
-          (message "Annotating... done"))))))
+    (when current-line
+      (goto-line current-line temp-buffer-name))
+    (message "Annotating... done")))
 
 (defun vc-annotate-prev-version (prefix)
   "Visit the annotation of the version previous to this one.
@@ -3390,30 +3404,30 @@ The annotations are relative to the current time, unless overridden by OFFSET."
   (font-lock-mode 1))
 
 (defun vc-annotate-lines (limit)
-  (while (< (point) limit)
-    (let ((difference (vc-annotate-difference vc-annotate-offset))
-          (start (point))
-          (end (progn (forward-line 1) (point))))
-      (when difference
-        (let* ((color (or (vc-annotate-compcar difference vc-annotate-color-map)
-                          (cons nil vc-annotate-very-old-color)))
-               ;; substring from index 1 to remove any leading `#' in the name
-               (face-name (concat "vc-annotate-face-"
-                                  (if (string-equal
-                                       (substring (cdr color) 0 1) "#")
-                                      (substring (cdr color) 1)
-                                    (cdr color))))
-               ;; Make the face if not done.
-               (face (or (intern-soft face-name)
-                         (let ((tmp-face (make-face (intern face-name))))
-                           (set-face-foreground tmp-face (cdr color))
-                           (if vc-annotate-background
-                               (set-face-background tmp-face
-                                                    vc-annotate-background))
-                           tmp-face))))	; Return the face
-          (put-text-property start end 'face face)))))
-  ;; Pretend to font-lock there were no matches.
-  nil)
+  (let (difference)
+    (while (and (< (point) limit)
+		(setq difference (vc-annotate-difference vc-annotate-offset)))
+      (let* ((color (or (vc-annotate-compcar difference vc-annotate-color-map)
+			(cons nil vc-annotate-very-old-color)))
+	     ;; substring from index 1 to remove any leading `#' in the name
+	     (face-name (concat "vc-annotate-face-"
+				(if (string-equal
+				     (substring (cdr color) 0 1) "#")
+				    (substring (cdr color) 1)
+				  (cdr color))))
+	     ;; Make the face if not done.
+	     (face (or (intern-soft face-name)
+		       (let ((tmp-face (make-face (intern face-name))))
+			 (set-face-foreground tmp-face (cdr color))
+			 (if vc-annotate-background
+			     (set-face-background tmp-face
+						  vc-annotate-background))
+			 tmp-face)))	; Return the face
+	     (point (point)))
+	(forward-line 1)
+	(put-text-property point (point) 'face face)))
+    ;; Pretend to font-lock there were no matches.
+    nil))
 
 ;; Collect back-end-dependent stuff here
 

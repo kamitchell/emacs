@@ -1,12 +1,12 @@
 ;;; vc-rcs.el --- support for RCS version-control
 
 ;; Copyright (C) 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000,
-;;   2001, 2002, 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+;;   2001, 2002, 2003, 2004, 2005, 2006 Free Software Foundation, Inc.
 
 ;; Author:     FSF (see vc.el for full credits)
 ;; Maintainer: Andre Spiegel <spiegel@gnu.org>
 
-;; $Id$
+;; $Id: vc-rcs.el,v 1.10 2007/07/10 14:38:33 esr Exp $
 
 ;; This file is part of GNU Emacs.
 
@@ -401,7 +401,7 @@ whether to remove it."
                            (concat "-r"
                                    (if (not rev)
                                        ;; no revision specified:
-                                       ;; use current workfile version
+                                       ;; use current tip version
                                        workrev
                                      ;; REV is t ...
                                      (if (not (vc-trunk-p workrev))
@@ -427,40 +427,47 @@ whether to remove it."
 		    new-version)))))
 	(message "Checking out %s...done" file)))))
 
+(defun vc-rcs-rollback (files)
+  "Roll back, undoing the most recent checkins of FILES."
+  (if (not files)
+      (error "RCS backend doesn't support directory-level rollback."))
+  (dolist (file files)
+	  (let* ((discard (vc-workfile-version file))
+		 (previous (if (vc-trunk-p discard) "" (vc-branch-part discard)))
+		 (config (current-window-configuration))
+		 (done nil))
+	    (if (null (yes-or-no-p (format "Remove version %s from %s history? " 
+					   discard file)))
+		(error "Aborted"))
+	    (message "Removing revision %s from %s." discard file)
+	    (vc-do-command nil 0 "rcs" (vc-name file) (concat "-o" discard))
+	    ;; Check out the most recent remaining version.  If it
+	    ;; fails, because the whole branch got deleted, do a
+	    ;; double-take and check out the version where the branch
+	    ;; started.
+	    (while (not done)
+	      (condition-case err
+		  (progn
+		    (vc-do-command nil 0 "co" (vc-name file) "-f"
+				   (concat "-u" previous))
+		    (setq done t))
+		(error (set-buffer "*vc*")
+		       (goto-char (point-min))
+		       (if (search-forward "no side branches present for" nil t)
+			   (progn (setq previous (vc-branch-part previous))
+				  (vc-rcs-set-default-branch file previous)
+				  ;; vc-do-command popped up a window with
+				  ;; the error message.  Get rid of it, by
+				  ;; restoring the old window configuration.
+				  (set-window-configuration config))
+			 ;; No, it was some other error: re-signal it.
+			 (signal (car err) (cdr err)))))))))
+
 (defun vc-rcs-revert (file &optional contents-done)
   "Revert FILE to the version it was based on."
   (vc-do-command nil 0 "co" (vc-name file) "-f"
                  (concat (if (eq (vc-state file) 'edited) "-u" "-r")
                          (vc-workfile-version file))))
-
-(defun vc-rcs-cancel-version (file editable)
-  "Undo the most recent checkin of FILE.
-EDITABLE non-nil means previous version should be locked."
-  (let* ((target (vc-workfile-version file))
-	 (previous (if (vc-trunk-p target) "" (vc-branch-part target)))
-	 (config (current-window-configuration))
-	 (done nil))
-    (vc-do-command nil 0 "rcs" (vc-name file) (concat "-o" target))
-    ;; Check out the most recent remaining version.  If it fails, because
-    ;; the whole branch got deleted, do a double-take and check out the
-    ;; version where the branch started.
-    (while (not done)
-      (condition-case err
-	  (progn
-	    (vc-do-command nil 0 "co" (vc-name file) "-f"
-			   (concat (if editable "-l" "-u") previous))
-	    (setq done t))
-	(error (set-buffer "*vc*")
-	       (goto-char (point-min))
-	       (if (search-forward "no side branches present for" nil t)
-		   (progn (setq previous (vc-branch-part previous))
-			  (vc-rcs-set-default-branch file previous)
-			  ;; vc-do-command popped up a window with
-			  ;; the error message.  Get rid of it, by
-			  ;; restoring the old window configuration.
-			  (set-window-configuration config))
-		 ;; No, it was some other error: re-signal it.
-		 (signal (car err) (cdr err))))))))
 
 (defun vc-rcs-merge (file first-version &optional second-version)
   "Merge changes into current working copy of FILE.
@@ -484,9 +491,9 @@ Needs RCS 5.6.2 or later for -M."
 ;;; History functions
 ;;;
 
-(defun vc-rcs-print-log (file &optional buffer)
+(defun vc-rcs-print-log (files &optional buffer)
   "Get change log associated with FILE."
-  (vc-do-command buffer 0 "rlog" (vc-name file)))
+  (vc-do-command buffer 0 "rlog" (mapcar 'vc-name files)))
 
 (defun vc-rcs-diff (file &optional oldvers newvers buffer)
   "Get a difference report using RCS between two versions of FILE."
@@ -496,6 +503,24 @@ Needs RCS 5.6.2 or later for -M."
                        (concat "-r" oldvers)
                        (and newvers (concat "-r" newvers)))
                  (vc-switches 'RCS 'diff))))
+
+(defun vc-rcs-wash-log ()
+  "Remove all non-comment information from log output."
+  (let ((separator (concat "^-+\nrevision [0-9.]+\ndate: .*\n"
+			   "\\(branches: .*;\n\\)?"
+			   "\\(\\*\\*\\* empty log message \\*\\*\\*\n\\)?")))
+    (goto-char (point-max)) (forward-line -1)
+    (while (looking-at "=*\n")
+      (delete-char (- (match-end 0) (match-beginning 0)))
+      (forward-line -1))
+    (goto-char (point-min))
+    (if (looking-at "[\b\t\n\v\f\r ]+")
+	(delete-char (- (match-end 0) (match-beginning 0))))
+    (goto-char (point-min))
+    (re-search-forward separator nil t)
+    (delete-region (point-min) (point))
+    (while (re-search-forward separator nil t)
+      (delete-region (match-beginning 0) (match-end 0)))))
 
 (defun vc-rcs-annotate-command (file buffer &optional revision)
   "Annotate FILE, inserting the results in BUFFER.
@@ -666,7 +691,6 @@ Optional arg REVISION is a revision to annotate from."
                              "  "
                              (aref rda 0)
                              ls)
-                      :vc-annotate-prefix t
                       :vc-rcs-r/d/a rda)))
         (maphash
          (if all-me
@@ -689,9 +713,9 @@ encoded as fractional days."
   "Return the time of the next annotation (as fraction of days)
 systime, or nil if there is none.  Also, reposition point."
   (unless (eobp)
-    (prog1 (vc-annotate-convert-time
-            (aref (get-text-property (point) :vc-rcs-r/d/a) 1))
-      (goto-char (next-single-property-change (point) :vc-annotate-prefix)))))
+    (search-forward ": ")
+    (vc-annotate-convert-time
+     (aref (get-text-property (point) :vc-rcs-r/d/a) 1))))
 
 (defun vc-rcs-annotate-extract-revision-at-line ()
   (aref (get-text-property (point) :vc-rcs-r/d/a) 0))
@@ -762,7 +786,7 @@ to its master version."
 
 (defun vc-rcs-fetch-master-state (file &optional workfile-version)
   "Compute the master file's idea of the state of FILE.
-If a WORKFILE-VERSION is given, compute the state of that version,
+If a TIP-VERSION is given, compute the state of that version,
 otherwise determine the workfile version based on the master file.
 This function sets the properties `vc-workfile-version' and
 `vc-checkout-model' to their correct values, based on the master
@@ -908,7 +932,7 @@ Returns: nil            if no headers were found
 	  (vc-file-setprop file 'vc-state
 			   (cond
 			    ((eq locking-user 'none) 'up-to-date)
-			    ((string= locking-user (vc-user-login-name file))
+			    ((string= locking-user (vc-user-login-name file)) 
                              'edited)
 			    (t locking-user)))
 	  ;; If the file has headers, we don't want to query the

@@ -1,12 +1,12 @@
 ;;; vc-cvs.el --- non-resident support for CVS version-control
 
 ;; Copyright (C) 1995, 1998, 1999, 2000, 2001, 2002, 2003,
-;;   2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+;;   2004, 2005, 2006 Free Software Foundation, Inc.
 
 ;; Author:      FSF (see vc.el for full credits)
 ;; Maintainer:  Andre Spiegel <spiegel@gnu.org>
 
-;; $Id$
+;; $Id: vc-cvs.el,v 1.2 2007/07/09 11:14:40 esr Exp $
 
 ;; This file is part of GNU Emacs.
 
@@ -29,11 +29,8 @@
 
 ;;; Code:
 
-(eval-when-compile (require 'cl) (require 'vc))
-
-;; Clear up the cache to force vc-call to check again and discover
-;; new functions when we reload this file.
-(put 'CVS 'vc-functions nil)
+(eval-when-compile
+  (require 'vc))
 
 ;;;
 ;;; Customization options
@@ -371,45 +368,99 @@ its parents."
 	 "-p"
 	 (vc-switches 'CVS 'checkout)))
 
-(defun vc-cvs-checkout (file &optional editable rev)
-  "Checkout a revision of FILE into the working area.
+(defun vc-cvs-checkout (file &optional editable rev workfile)
+  "Retrieve a revision of FILE into a WORKFILE.
 EDITABLE non-nil means that the file should be writable.
-REV is the revision to check out."
-  (message "Checking out %s..." file)
-  ;; Change buffers to get local value of vc-checkout-switches.
-  (with-current-buffer (or (get-file-buffer file) (current-buffer))
-    (if (and (file-exists-p file) (not rev))
-        ;; If no revision was specified, just make the file writable
-        ;; if necessary (using `cvs-edit' if requested).
-        (and editable (not (eq (vc-cvs-checkout-model file) 'implicit))
-             (if vc-cvs-use-edit
-                 (vc-cvs-command nil 0 file "edit")
-               (set-file-modes file (logior (file-modes file) 128))
-               (if (equal file buffer-file-name) (toggle-read-only -1))))
-      ;; Check out a particular version (or recreate the file).
-      (vc-file-setprop file 'vc-workfile-version nil)
-      (apply 'vc-cvs-command nil 0 file
-             (and editable "-w")
-             "update"
-             (when rev
-               (unless (eq rev t)
-                 ;; default for verbose checkout: clear the
-                 ;; sticky tag so that the actual update will
-                 ;; get the head of the trunk
-                 (if (string= rev "")
-                     "-A"
-                   (concat "-r" rev))))
-             (vc-switches 'CVS 'checkout)))
-    (vc-mode-line file))
-  (message "Checking out %s...done" file))
+REV is the revision to check out into WORKFILE."
+  (let ((filename (or workfile file))
+	(file-buffer (get-file-buffer file))
+	switches)
+    (message "Checking out %s..." filename)
+    (save-excursion
+      ;; Change buffers to get local value of vc-checkout-switches.
+      (if file-buffer (set-buffer file-buffer))
+      (setq switches (vc-switches 'CVS 'checkout))
+      ;; Save this buffer's default-directory
+      ;; and use save-excursion to make sure it is restored
+      ;; in the same buffer it was saved in.
+      (let ((default-directory default-directory))
+	(save-excursion
+	  ;; Adjust the default-directory so that the check-out creates
+	  ;; the file in the right place.
+	  (setq default-directory (file-name-directory filename))
+	  (if workfile
+	      (let ((failed t)
+                    (backup-name (if (string= file workfile)
+                                     (car (find-backup-file-name filename)))))
+                (when backup-name
+                  (copy-file filename backup-name
+                             'ok-if-already-exists 'keep-date)
+                  (unless (file-writable-p filename)
+                    (set-file-modes filename
+                                    (logior (file-modes filename) 128))))
+		(unwind-protect
+		    (progn
+                      (let ((coding-system-for-read 'no-conversion)
+                            (coding-system-for-write 'no-conversion))
+                        (with-temp-file filename
+                          (apply 'vc-cvs-command
+                                 (current-buffer) 0 file
+                                 "-Q"	; suppress diagnostic output
+                                 "update"
+                                 (and (stringp rev)
+                                      (not (string= rev ""))
+                                      (concat "-r" rev))
+                                 "-p"
+                                 switches)))
+		      (setq failed nil))
+		  (if failed
+                      (if backup-name
+                          (rename-file backup-name filename
+                                       'ok-if-already-exists)
+                        (if (file-exists-p filename)
+                            (delete-file filename)))
+                    (and backup-name
+                         (not vc-make-backup-files)
+                         (delete-file backup-name)))))
+	    (if (and (file-exists-p file) (not rev))
+		;; If no revision was specified, just make the file writable
+		;; if necessary (using `cvs-edit' if requested).
+		(and editable (not (eq (vc-cvs-checkout-model file) 'implicit))
+                     (if vc-cvs-use-edit
+                         (vc-cvs-command nil 0 file "edit")
+                       (set-file-modes file (logior (file-modes file) 128))
+                       (if file-buffer (toggle-read-only -1))))
+              ;; Check out a particular version (or recreate the file).
+              (vc-file-setprop file 'vc-workfile-version nil)
+              (apply 'vc-cvs-command nil 0 file
+                     (and editable
+                          (or (not (file-exists-p file))
+                              (not (eq (vc-cvs-checkout-model file)
+                                       'implicit)))
+                          "-w")
+                     "update"
+                     (when rev
+                       (unless (eq rev t)
+                         ;; default for verbose checkout: clear the
+                         ;; sticky tag so that the actual update will
+                         ;; get the head of the trunk
+                         (if (string= rev "")
+                             "-A"
+                           (concat "-r" rev))))
+                     switches))))
+	(vc-mode-line file)
+	(message "Checking out %s...done" filename)))))
 
 (defun vc-cvs-delete-file (file)
   (vc-cvs-command nil 0 file "remove" "-f")
   (vc-cvs-command nil 0 file "commit" "-mRemoved."))
 
 (defun vc-cvs-revert (file &optional contents-done)
-  "Revert FILE to the version on which it was based."
-  (vc-default-revert 'CVS file contents-done)
+  "Revert FILE to the version it was based on."
+  (unless contents-done
+    ;; Check out via standard output (caused by the final argument
+    ;; FILE below), so that no sticky tag is set.
+    (vc-cvs-checkout file nil (vc-workfile-version file) file))
   (unless (eq (vc-checkout-model file) 'implicit)
     (if vc-cvs-use-edit
         (vc-cvs-command nil 0 file "unedit")
@@ -481,12 +532,18 @@ The changes are between FIRST-VERSION and SECOND-VERSION."
 ;;; History functions
 ;;;
 
-(defun vc-cvs-print-log (file &optional buffer)
+(defun vc-cvs-print-log (files &optional buffer)
   "Get change log associated with FILE."
   (vc-cvs-command
    buffer
-   (if (and (vc-stay-local-p file) (fboundp 'start-process)) 'async 0)
-   file "log"))
+   (if (apply 'and (map 'vc-all-local-p files))
+		    (fboundp 'start-process)) 'async 0)
+   files "log")))
+
+(defun vc-cvs-wash-log ()
+  "Remove all non-comment information from log output."
+  (vc-call-backend 'RCS 'wash-log)
+  nil)
 
 (defun vc-cvs-diff (file &optional oldvers newvers buffer)
   "Get a difference report using CVS between two versions of FILE."
@@ -537,36 +594,14 @@ The changes are between FIRST-VERSION and SECOND-VERSION."
                (and rev2 (concat "-r" rev2))
                (vc-switches 'CVS 'diff))))))
 
-(defconst vc-cvs-annotate-first-line-re "^[0-9]")
-
-(defun vc-cvs-annotate-process-filter (process string)
-  (setq string (concat (process-get process 'output) string))
-  (if (not (string-match vc-cvs-annotate-first-line-re string))
-      ;; Still waiting for the first real line.
-      (process-put process 'output string)
-    (let ((vc-filter (process-get process 'vc-filter)))
-      (set-process-filter process vc-filter)
-      (funcall vc-filter process (substring string (match-beginning 0))))))
-
 (defun vc-cvs-annotate-command (file buffer &optional version)
   "Execute \"cvs annotate\" on FILE, inserting the contents in BUFFER.
 Optional arg VERSION is a version to annotate from."
-  (vc-cvs-command buffer
-                  (if (and (vc-stay-local-p file) (fboundp 'start-process))
-		      'async 0)
-                  file "annotate"
-                  (if version (concat "-r" version)))
-  ;; Strip the leading few lines.
-  (let ((proc (get-buffer-process buffer)))
-    (if proc
-        ;; If running asynchronously, use a process filter.
-        (progn
-          (process-put proc 'vc-filter (process-filter proc))
-          (set-process-filter proc 'vc-cvs-annotate-process-filter))
-      (with-current-buffer buffer
-        (goto-char (point-min))
-        (re-search-forward vc-cvs-annotate-first-line-re)
-        (delete-region (point-min) (1- (point)))))))
+  (vc-cvs-command buffer 0 file "annotate" (if version (concat "-r" version)))
+  (with-current-buffer buffer
+    (goto-char (point-min))
+    (re-search-forward "^[0-9]")
+    (delete-region (point-min) (1- (point)))))
 
 (defun vc-cvs-annotate-current-time ()
   "Return the current time, based at midnight of the current day, and
@@ -683,17 +718,15 @@ If UPDATE is non-nil, then update (resynch) any affected buffers."
 ;;; Internal functions
 ;;;
 
-(defun vc-cvs-command (buffer okstatus file &rest flags)
+(defun vc-cvs-command (buffer okstatus files &rest flags)
   "A wrapper around `vc-do-command' for use in vc-cvs.el.
 The difference to vc-do-command is that this function always invokes `cvs',
 and that it passes `vc-cvs-global-switches' to it before FLAGS."
-  (apply 'vc-do-command buffer okstatus "cvs" file
+  (apply 'vc-do-command buffer okstatus "cvs" files
          (if (stringp vc-cvs-global-switches)
              (cons vc-cvs-global-switches flags)
            (append vc-cvs-global-switches
                    flags))))
-
-(defalias 'vc-cvs-stay-local-p 'vc-stay-local-p)  ;Back-compatibility.
 
 (defun vc-cvs-repository-hostname (dirname)
   "Hostname of the CVS server associated to workarea DIRNAME."
@@ -931,34 +964,7 @@ is non-nil."
 	       (vc-file-setprop file 'vc-checkout-time 0)
 	       (if set-state (vc-file-setprop file 'vc-state 'edited)))))))))
 
-;; Completion of revision names.
-;; Just so I don't feel like I'm duplicating code from pcl-cvs, I'll use
-;; `cvs log' so I can list all the revision numbers rather than only
-;; tag names.
-
-(defun vc-cvs-revision-table (file)
-  (let ((default-directory (file-name-directory file))
-        (res nil))
-    (with-temp-buffer
-      (vc-cvs-command t nil file "log")
-      (goto-char (point-min))
-      (when (re-search-forward "^symbolic names:\n" nil t)
-        (while (looking-at "^	\\(.*\\): \\(.*\\)")
-          (push (cons (match-string 1) (match-string 2)) res)
-          (forward-line 1)))
-      (while (re-search-forward "^revision \\([0-9.]+\\)" nil t)
-        (push (match-string 1) res))
-      res)))
-
-(defun vc-cvs-revision-completion-table (file)
-  (lexical-let ((file file)
-                table)
-    (setq table (lazy-completion-table
-                 table (lambda () (vc-cvs-revision-table file))))
-    table))
-                                           
-
 (provide 'vc-cvs)
 
-;; arch-tag: 60e1402a-aa53-4607-927a-cf74f144b432
+;;; arch-tag: 60e1402a-aa53-4607-927a-cf74f144b432
 ;;; vc-cvs.el ends here
