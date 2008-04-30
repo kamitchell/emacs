@@ -62,9 +62,8 @@ Boston, MA 02110-1301, USA.  */
 #include <imm.h>
 #define FILE_NAME_TEXT_FIELD edt1
 
-#ifdef USE_FONT_BACKEND
 #include "font.h"
-#endif
+#include "w32font.h"
 
 void syms_of_w32fns ();
 void globals_of_w32fns ();
@@ -74,7 +73,9 @@ extern double atof ();
 extern int w32_console_toggle_lock_key P_ ((int, Lisp_Object));
 extern void w32_menu_display_help P_ ((HWND, HMENU, UINT, UINT));
 extern void w32_free_menu_strings P_ ((HWND));
+#if OLD_FONT
 extern XCharStruct *w32_per_char_metric P_ ((XFontStruct *, wchar_t *, int));
+#endif
 
 extern int quit_char;
 
@@ -342,10 +343,8 @@ extern HMENU current_popup_menu;
 static int menubar_in_use = 0;
 
 /* From w32uniscribe.c  */
-#ifdef USE_FONT_BACKEND
 extern void syms_of_w32uniscribe ();
 extern int uniscribe_available;
-#endif
 
 /* Function prototypes for hourglass support.  */
 static void show_hourglass P_ ((struct frame *));
@@ -505,7 +504,7 @@ x_real_positions (f, xptr, yptr)
 
 DEFUN ("w32-define-rgb-color", Fw32_define_rgb_color,
        Sw32_define_rgb_color, 4, 4, 0,
-       doc: /* Convert RGB numbers to a Windows color reference and associate with NAME.
+       doc: /* Convert RGB numbers to a windows color reference and associate with NAME.
 This adds or updates a named color to `w32-color-map', making it
 available for use.  The original entry's RGB ref is returned, or nil
 if the entry is new.  */)
@@ -2759,7 +2758,7 @@ w32_msg_worker (void *arg)
   dummy_buf.w32msg.msg.hwnd = NULL;
   dummy_buf.w32msg.msg.message = WM_NULL;
 
-  /* This is the initial message loop which should only exit when the
+  /* This is the inital message loop which should only exit when the
      application quits.  */
   w32_msg_pump (&dummy_buf);
 
@@ -4270,7 +4269,6 @@ unwind_create_frame (frame)
   return Qnil;
 }
 
-#ifdef USE_FONT_BACKEND
 static void
 x_default_font_parameter (f, parms)
      struct frame *f;
@@ -4301,7 +4299,6 @@ x_default_font_parameter (f, parms)
     }
   x_default_parameter (f, parms, Qfont, font, "font", "Font", RES_TYPE_STRING);
 }
-#endif
 
 DEFUN ("x-create-frame", Fx_create_frame, Sx_create_frame,
        1, 1, 0,
@@ -4444,57 +4441,16 @@ This function is an internal primitive--use `make-frame' instead.  */)
   f->resx = dpyinfo->resx;
   f->resy = dpyinfo->resy;
 
-#ifdef USE_FONT_BACKEND
-  if (enable_font_backend)
-    {
-      /* Perhaps, we must allow frame parameter, say `font-backend',
-	 to specify which font backends to use.  */
-      if (uniscribe_available)
-	register_font_driver (&uniscribe_font_driver, f);
-      register_font_driver (&w32font_driver, f);
+  if (uniscribe_available)
+    register_font_driver (&uniscribe_font_driver, f);
+  register_font_driver (&w32font_driver, f);
 
-      x_default_parameter (f, parameters, Qfont_backend, Qnil,
-			   "fontBackend", "FontBackend", RES_TYPE_STRING);
-    }
-#endif	/* USE_FONT_BACKEND */
+  x_default_parameter (f, parameters, Qfont_backend, Qnil,
+		       "fontBackend", "FontBackend", RES_TYPE_STRING);
 
   /* Extract the window parameters from the supplied values
      that are needed to determine window geometry.  */
-#ifdef USE_FONT_BACKEND
-  if (enable_font_backend)
-    x_default_font_parameter (f, parameters);
-  else
-#endif
-  {
-    Lisp_Object font;
-
-    font = w32_get_arg (parameters, Qfont, "font", "Font", RES_TYPE_STRING);
-
-    BLOCK_INPUT;
-    /* First, try whatever font the caller has specified.  */
-    if (STRINGP (font))
-      {
-        tem = Fquery_fontset (font, Qnil);
-        if (STRINGP (tem))
-          font = x_new_fontset (f, tem);
-        else
-          font = x_new_font (f, SDATA (font));
-      }
-    /* Try out a font which we hope has bold and italic variations.  */
-    if (!STRINGP (font))
-      font = x_new_font (f, "-*-Courier New-normal-r-*-*-*-100-*-*-c-*-iso8859-1");
-    if (! STRINGP (font))
-      font = x_new_font (f, "-*-Courier-normal-r-*-*-13-*-*-*-c-*-iso8859-1");
-    /* If those didn't work, look for something which will at least work.  */
-    if (! STRINGP (font))
-      font = x_new_font (f, "-*-Fixedsys-normal-r-*-*-12-*-*-*-c-*-iso8859-1");
-    UNBLOCK_INPUT;
-    if (! STRINGP (font))
-      font = build_string ("Fixedsys");
-
-    x_default_parameter (f, parameters, Qfont, font,
-			 "font", "Font", RES_TYPE_STRING);
-  }
+  x_default_font_parameter (f, parameters);
 
   x_default_parameter (f, parameters, Qborder_width, make_number (2),
 		       "borderWidth", "BorderWidth", RES_TYPE_NUMBER);
@@ -4683,6 +4639,8 @@ DEFUN ("x-focus-frame", Fx_focus_frame, Sx_focus_frame, 1, 1, 0,
 }
 
 
+#if OLD_FONT
+
 /* Return the charset portion of a font name.  */
 char *
 xlfd_charset_of_font (char * fontname)
@@ -5008,6 +4966,7 @@ w32_unload_font (dpyinfo, font)
       xfree (font);
     }
 }
+#endif	/* OLD_FONT */
 
 /* The font conversion stuff between x and w32 */
 
@@ -5506,6 +5465,8 @@ w32_to_all_x_charsets (fncharset)
   }
 }
 
+#if OLD_FONT
+
 /* Get the Windows codepage corresponding to the specified font.  The
    charset info in the font name is used to look up
    w32-charset-to-codepage-alist.  */
@@ -5561,7 +5522,7 @@ w32_codepage_for_font (char *fontname)
   else
     return CP_UNKNOWN;
 }
-
+#endif	/* OLD_FONT */
 
 static BOOL
 w32_to_x_font (lplogfont, lpxstr, len, specific_charset)
@@ -5846,6 +5807,8 @@ x_to_w32_font (lpxstr, lplogfont)
 
   return (TRUE);
 }
+
+#if OLD_FONT
 
 /* Strip the pixel height and point height from the given xlfd, and
    return the pixel height. If no pixel height is specified, calculate
@@ -6560,10 +6523,14 @@ w32_find_ccl_program (fontp)
     }
 }
 
+#endif	/* OLD_FONT */
+
 /* directory-files from dired.c.  */
 Lisp_Object Fdirectory_files P_ ((Lisp_Object, Lisp_Object, Lisp_Object, Lisp_Object));
 
 
+#if OLD_FONT
+
 /* Find BDF files in a specified directory.  (use GCPRO when calling,
    as this calls lisp to get a directory listing).  */
 static Lisp_Object
@@ -6614,6 +6581,7 @@ in the list.  DIRECTORY may be a list of directories.  */)
     }
   return list;
 }
+#endif	/* OLD_FONT */
 
 
 DEFUN ("xw-color-defined-p", Fxw_color_defined_p, Sxw_color_defined_p, 1, 2, 0,
@@ -7084,6 +7052,7 @@ If DISPLAY is nil, that stands for the selected frame's display.  */)
     error ("Display still has frames on it");
 
   BLOCK_INPUT;
+#if OLD_FONT
   /* Free the fonts in the font table.  */
   for (i = 0; i < dpyinfo->n_fonts; i++)
     if (dpyinfo->font_table[i].name)
@@ -7093,6 +7062,7 @@ If DISPLAY is nil, that stands for the selected frame's display.  */)
         xfree (dpyinfo->font_table[i].name);
         w32_unload_font (dpyinfo, dpyinfo->font_table[i].font);
       }
+#endif
   x_destroy_all_bitmaps (dpyinfo);
 
   x_delete_display (dpyinfo);
@@ -7523,56 +7493,16 @@ x_create_tip_frame (dpyinfo, parms, text)
   f->resx = dpyinfo->resx;
   f->resy = dpyinfo->resy;
 
-#ifdef USE_FONT_BACKEND
-  if (enable_font_backend)
-    {
-      /* Perhaps, we must allow frame parameter, say `font-backend',
-	 to specify which font backends to use.  */
-      register_font_driver (&w32font_driver, f);
+  /* Perhaps, we must allow frame parameter, say `font-backend',
+     to specify which font backends to use.  */
+  register_font_driver (&w32font_driver, f);
 
-      x_default_parameter (f, parms, Qfont_backend, Qnil,
-			   "fontBackend", "FontBackend", RES_TYPE_STRING);
-    }
-#endif	/* USE_FONT_BACKEND */
+  x_default_parameter (f, parms, Qfont_backend, Qnil,
+		       "fontBackend", "FontBackend", RES_TYPE_STRING);
 
   /* Extract the window parameters from the supplied values
      that are needed to determine window geometry.  */
-#ifdef USE_FONT_BACKEND
-  if (enable_font_backend)
-    x_default_font_parameter (f, parms);
-  else
-#endif	/* USE_FONT_BACKEND */
-  {
-    Lisp_Object font;
-
-    font = w32_get_arg (parms, Qfont, "font", "Font", RES_TYPE_STRING);
-
-    BLOCK_INPUT;
-    /* First, try whatever font the caller has specified.  */
-    if (STRINGP (font))
-      {
-	tem = Fquery_fontset (font, Qnil);
-	if (STRINGP (tem))
-	  font = x_new_fontset (f, tem);
-	else
-	  font = x_new_font (f, SDATA (font));
-      }
-
-    /* Try out a font which we hope has bold and italic variations.  */
-    if (!STRINGP (font))
-      font = x_new_font (f, "-*-Courier New-normal-r-*-*-*-100-*-*-c-*-iso8859-1");
-    if (! STRINGP (font))
-      font = x_new_font (f, "-*-Courier-normal-r-*-*-13-*-*-*-c-*-iso8859-1");
-    /* If those didn't work, look for something which will at least work.  */
-    if (! STRINGP (font))
-      font = x_new_font (f, "-*-Fixedsys-normal-r-*-*-12-*-*-*-c-*-iso8859-1");
-    UNBLOCK_INPUT;
-    if (! STRINGP (font))
-      font = build_string ("Fixedsys");
-
-    x_default_parameter (f, parms, Qfont, font,
-			 "font", "Font", RES_TYPE_STRING);
-  }
+  x_default_font_parameter (f, parms);
 
   x_default_parameter (f, parms, Qborder_width, make_number (2),
 		       "borderWidth", "BorderWidth", RES_TYPE_NUMBER);
@@ -8304,7 +8234,7 @@ in the font selection dialog. */)
   /* Initialize as much of the font details as we can from the current
      default font.  */
   hdc = GetDC (FRAME_W32_WINDOW (f));
-  oldobj = SelectObject (hdc, FRAME_FONT (f)->hfont);
+  oldobj = SelectObject (hdc, FONT_COMPAT (FRAME_FONT (f))->hfont);
   GetTextFace (hdc, LF_FACESIZE, lf.lfFaceName);
   if (GetTextMetrics (hdc, &tm))
     {
@@ -8680,115 +8610,6 @@ Lisp_Object class, name;
   return Qt;
 }
 
-DEFUN ("w32-battery-status", Fw32_battery_status, Sw32_battery_status, 0, 0, 0,
-       doc: /* Get power status information from Windows system.
-
-The following %-sequences are provided:
-%L AC line status (verbose)
-%B Battery status (verbose)
-%b Battery status, empty means high, `-' means low,
-   `!' means critical, and `+' means charging
-%p Battery load percentage
-%s Remaining time (to charge or discharge) in seconds
-%m Remaining time (to charge or discharge) in minutes
-%h Remaining time (to charge or discharge) in hours
-%t Remaining time (to charge or discharge) in the form `h:min'  */)
-  ()
-{
-  Lisp_Object status = Qnil;
-
-  SYSTEM_POWER_STATUS system_status;
-  if (GetSystemPowerStatus (&system_status))
-    {
-      Lisp_Object line_status, battery_status, battery_status_symbol;
-      Lisp_Object load_percentage, seconds, minutes, hours, remain;
-      Lisp_Object sequences[8];
-
-      long seconds_left = (long) system_status.BatteryLifeTime;
-
-      if (system_status.ACLineStatus == 0)
-	line_status = build_string ("off-line");
-      else if (system_status.ACLineStatus == 1)
-	line_status = build_string ("on-line");
-      else
-	line_status = build_string ("N/A");
-
-      if (system_status.BatteryFlag & 128)
-	{
-	  battery_status = build_string ("N/A");
-	  battery_status_symbol = build_string ("");
-	}
-      else if (system_status.BatteryFlag & 8)
-	{
-	  battery_status = build_string ("charging");
-	  battery_status_symbol = build_string ("+");
-	  if (system_status.BatteryFullLifeTime != -1L)
-	    seconds_left = system_status.BatteryFullLifeTime - seconds_left;
-	}
-      else if (system_status.BatteryFlag & 4)
-	{
-	  battery_status = build_string ("critical");
-	  battery_status_symbol = build_string ("!");
-	}
-      else if (system_status.BatteryFlag & 2)
-	{
-	  battery_status = build_string ("low");
-	  battery_status_symbol = build_string ("-");
-	}
-      else if (system_status.BatteryFlag & 1)
-	{
-	  battery_status = build_string ("high");
-	  battery_status_symbol = build_string ("");
-	}
-      else
-	{
-	  battery_status = build_string ("medium");
-	  battery_status_symbol = build_string ("");
-	}
-
-      if (system_status.BatteryLifePercent > 100)
-	load_percentage = build_string ("N/A");
-      else
-	{
-	  char buffer[16];
-	  _snprintf (buffer, 16, "%d", system_status.BatteryLifePercent);
-	  load_percentage = build_string (buffer);
-	}
-
-      if (seconds_left < 0)
-	seconds = minutes = hours = remain = build_string ("N/A");
-      else
-	{
-	  long m;
-	  float h;
-	  char buffer[16];
-	  _snprintf (buffer, 16, "%ld", seconds_left);
-	  seconds = build_string (buffer);
-
-	  m = seconds_left / 60;
-	  _snprintf (buffer, 16, "%d", m);
-	  minutes = build_string (buffer);
-
-	  h = seconds_left / 3600.0;
-	  _snprintf (buffer, 16, "%3.1f", h);
-	  hours = build_string (buffer);
-
-	  _snprintf (buffer, 16, "%1.0f:%d", h, m);
-	  remain = build_string (buffer);
-	}
-      sequences[0] = Fcons (make_number ('L'), line_status);
-      sequences[1] = Fcons (make_number ('B'), battery_status);
-      sequences[2] = Fcons (make_number ('b'), battery_status_symbol);
-      sequences[3] = Fcons (make_number ('p'), load_percentage);
-      sequences[4] = Fcons (make_number ('s'), seconds);
-      sequences[5] = Fcons (make_number ('m'), minutes);
-      sequences[6] = Fcons (make_number ('h'), hours);
-      sequences[7] = Fcons (make_number ('t'), remain);
-
-      status = Flist (8, sequences);
-    }
-  return status;
-}
 
 
 DEFUN ("file-system-info", Ffile_system_info, Sfile_system_info, 1, 1, 0,
@@ -8996,9 +8817,7 @@ frame_parm_handler w32_frame_parm_handlers[] =
   x_set_fringe_width,
   0, /* x_set_wait_for_wm, */
   x_set_fullscreen,
-#ifdef USE_FONT_BACKEND
   x_set_font_backend
-#endif
 };
 
 void
@@ -9395,12 +9214,14 @@ versions of Windows) characters.  */);
   defsubr (&Sw32_reconstruct_hot_key);
   defsubr (&Sw32_toggle_lock_key);
   defsubr (&Sw32_window_exists_p);
+#if OLD_FONT
   defsubr (&Sw32_find_bdf_fonts);
-  defsubr (&Sw32_battery_status);
+#endif
 
   defsubr (&Sfile_system_info);
   defsubr (&Sdefault_printer_name);
 
+#if OLD_FONT
   /* Setting callback functions for fontset handler.  */
   get_font_info_func = w32_get_font_info;
 
@@ -9414,6 +9235,7 @@ versions of Windows) characters.  */);
   query_font_func = w32_query_font;
   set_frame_fontset_func = x_set_font;
   get_font_repertory_func = x_get_font_repertory;
+#endif
   check_window_system_func = check_w32;
 
 
@@ -9476,9 +9298,7 @@ globals_of_w32fns ()
   /* MessageBox does not work without this when linked to comctl32.dll 6.0.  */
   InitCommonControls ();
 
-#ifdef USE_FONT_BACKEND
   syms_of_w32uniscribe ();
-#endif
 }
 
 #undef abort
