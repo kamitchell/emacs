@@ -1,12 +1,8 @@
-2009-08-22  Juri Linkov  <juri@jurta.org>
+2009-08-22  Chong Yidong  <cyd@stupidchicken.com>
 
-	* progmodes/grep.el (lgrep, rgrep): At the beginning
-	set `dir' to `default-directory' unless `dir' is a non-nil
-	readable directory.  (Bug#4052)
-	(lgrep, rgrep): Change a weird way to report an error
-	from using `read-string' to using `error'.
-	Instead of using interactive arguments in the function body,
-	add new argument `confirm'.
+	* emacs-lisp/cl-loaddefs.el (deftype): Add autoload for deftype.
+
+	* emacs-lisp/cl-macs.el (deftype): Add autoload.
 
 2009-08-21  Stefan Monnier  <monnier@iro.umontreal.ca>
 
