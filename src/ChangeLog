@@ -1,5 +1,12 @@
 2009-11-06  Kevin A. Mitchell  <kevin@dashingfalcon.com>
 
+	* nsfont.m (nsfont_open): Additional refinement: Add ascender and
+	descender before rounding the height. Round the descender, then
+	make ascender = height - descender. This reduces the error term on
+	line height.
+
+2009-11-06  Kevin A. Mitchell  <kevin@dashingfalcon.com>
+
 	* nsfont.m (nsfont_open): When converting floating-point metrics
 	to integers, round up. This fixes cut-off descenders and tight
 	line spacing (bug#2836).
