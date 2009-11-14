@@ -802,7 +802,7 @@ nsfont_open (FRAME_PTR f, Lisp_Object font_entity, int pixel_size)
 
     /* max bounds */
     font_info->height =
-      lrint (hshrink * ([sfont ascender] - [sfont descender]) + expand * hd + 0.5);
+      lrint (hshrink * ([sfont ascender] - [sfont descender] + [sfont leading]) + expand * hd + 0.5);
     font_info->max_bounds.descent =
       lrint (-(hshrink* [sfont descender] - expand*hd/2) + 0.5);
     font_info->max_bounds.ascent =

@@ -1,3 +1,11 @@
+2009-11-14  Kevin A. Mitchell  <kevin@dashingfalcon.com>
+
+	* nsfont.m (nsfont_open): Also add the leading into the line
+	height per the model in Font Handling: Getting Font Metrics in the
+	Apple doc. Fixes up the metrics without having to add line spacing
+	to the frame, also keeps the text from crashing the bottom of the
+	minibuffer.
+
 2009-11-06  Kevin A. Mitchell  <kevin@dashingfalcon.com>
 
 	* nsfont.m (nsfont_open): Additional refinement: Add ascender and
