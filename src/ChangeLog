@@ -1,3 +1,9 @@
+2009-11-06  Kevin A. Mitchell  <kevin@dashingfalcon.com>
+
+	* nsfont.m (nsfont_open): When converting floating-point metrics
+	to integers, round up. This fixes cut-off descenders and tight
+	line spacing (bug#2836).
+
 2009-08-22  Eli Zaretskii  <eliz@gnu.org>
 
 	* coding.h (encode_coding_string): Don't encode unibyte strings.
