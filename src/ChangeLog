@@ -1,3 +1,18 @@
+2009-12-08  Kevin A. Mitchell  <kevin@dashingfalcon.com>
+
+	Layout fixes to prevent the left internal border drawing over
+	margin items (like line numbers), or clipping of line numbers by a
+	slightly out of position fringe.
+
+	* nsterm.m (ns_after_update_window_line): Account for the internal
+	border being on the inside of the fringe by including the margin
+	width in calculations.
+	(ns_draw_fringe_bitmap): When calculating if the fringe is on the
+	very left, also take out the left margin width.
+	* xdisp.c (window_box_left_offset): Internal border is inside the
+	margin area on NS frames, so the left margin area moves left by
+	the width of that border.
+
 2009-11-14  Kevin A. Mitchell  <kevin@dashingfalcon.com>
 
 	* nsfont.m (nsfont_open): Also add the leading into the line

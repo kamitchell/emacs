@@ -2159,9 +2159,11 @@ ns_after_update_window_line (struct glyph_row *desired_row)
       if (!desired_row->full_width_p)
         {
           int x1 = WINDOW_LEFT_SCROLL_BAR_AREA_WIDTH (w)
+            + WINDOW_LEFT_MARGIN_WIDTH (w)
             + WINDOW_LEFT_FRINGE_WIDTH (w);
           int x2 = WINDOW_LEFT_SCROLL_BAR_AREA_WIDTH (w)
             + FRAME_PIXEL_WIDTH (f) - NS_SCROLL_BAR_WIDTH (f)
+            - WINDOW_RIGHT_MARGIN_WIDTH (w)
             - WINDOW_RIGHT_FRINGE_WIDTH (w)
             - FRAME_INTERNAL_BORDER_WIDTH (f);
           ns_clear_frame_area (f, x1, y, width, height);
@@ -2257,6 +2259,7 @@ ns_draw_fringe_bitmap (struct window *w, struct glyph_row *row,
   int wd = p->bx < 0 ? p->wd : p->nx;
   BOOL fringeOnVeryLeft
     = x - WINDOW_LEFT_SCROLL_BAR_COLS (w) * WINDOW_FRAME_COLUMN_WIDTH (w)
+      - WINDOW_LEFT_MARGIN_WIDTH (w)
       - FRAME_INTERNAL_BORDER_WIDTH (f) < 10;
   BOOL fringeOnVeryRight
     = FRAME_PIXEL_WIDTH (f) - x - wd - FRAME_INTERNAL_BORDER_WIDTH (f)

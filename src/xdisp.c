@@ -1162,6 +1162,11 @@ window_box_left_offset (w, area)
 	   && WINDOW_HAS_FRINGES_OUTSIDE_MARGINS (w))
     x += WINDOW_LEFT_FRINGE_WIDTH (w);
 
+#if HAVE_NS
+  if (area == LEFT_MARGIN_AREA)
+    x -= FRAME_INTERNAL_BORDER_WIDTH (XFRAME (WINDOW_FRAME (w)));
+#endif
+
   return x;
 }
 
