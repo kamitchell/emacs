@@ -4161,7 +4161,7 @@ else
   { echo "$as_me:$LINENO: result: no" >&5
 echo "${ECHO_T}no" >&6; }
 fi
-rm -f conftest*
+rm -f -r conftest*
 
 
 { echo "$as_me:$LINENO: checking for ANSI C header files" >&5
@@ -4232,7 +4232,7 @@ if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
 else
   ac_cv_header_stdc=no
 fi
-rm -f conftest*
+rm -f -r conftest*
 
 fi
 
@@ -4253,7 +4253,7 @@ if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
 else
   ac_cv_header_stdc=no
 fi
-rm -f conftest*
+rm -f -r conftest*
 
 fi
 
@@ -5772,7 +5772,7 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 ;;
 esac
-rm -f conftest*
+rm -f -r conftest*
   if test $ac_cv_sys_file_offset_bits = unknown; then
     { echo "$as_me:$LINENO: checking for _LARGE_FILES value needed for large files" >&5
 echo $ECHO_N "checking for _LARGE_FILES value needed for large files... $ECHO_C" >&6; }
@@ -5893,7 +5893,7 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 ;;
 esac
-rm -f conftest*
+rm -f -r conftest*
   fi
 fi
 
@@ -6682,7 +6682,7 @@ if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
 else
   ac_cv_header_stdc=no
 fi
-rm -f conftest*
+rm -f -r conftest*
 
 fi
 
@@ -6703,7 +6703,7 @@ if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
 else
   ac_cv_header_stdc=no
 fi
-rm -f conftest*
+rm -f -r conftest*
 
 fi
 
@@ -8931,7 +8931,7 @@ _ACEOF
       eval "ac_im_$ac_var=\`\${MAKE-make} $ac_var 2>/dev/null | sed -n 's/^$ac_var=//p'\`"
     done
     # Open Windows xmkmf reportedly sets LIBDIR instead of USRLIBDIR.
-    for ac_extension in a so sl; do
+    for ac_extension in a so sl dylib la dll; do
       if test ! -f "$ac_im_usrlibdir/libX11.$ac_extension" &&
 	 test -f "$ac_im_libdir/libX11.$ac_extension"; then
 	ac_im_usrlibdir=$ac_im_libdir; break
@@ -9084,7 +9084,7 @@ sed 's/^/| /' conftest.$ac_ext >&5
 for ac_dir in `echo "$ac_x_includes $ac_x_header_dirs" | sed s/include/lib/g`
 do
   # Don't even attempt the hair of trying to link an X program!
-  for ac_extension in a so sl; do
+  for ac_extension in a so sl dylib la dll; do
     if test -r "$ac_dir/libX11.$ac_extension"; then
       ac_x_libraries=$ac_dir
       break 2
@@ -13650,7 +13650,7 @@ if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
 else
   HAVE_XPM=yes
 fi
-rm -f conftest*
+rm -f -r conftest*
 
 
       if test "${HAVE_XPM}" = "yes"; then
@@ -13899,7 +13899,7 @@ else
 echo "$as_me: WARNING: libjpeg found, but not version 6b or later" >&2;}
         HAVE_JPEG=no
 fi
-rm -f conftest*
+rm -f -r conftest*
 
   fi
 fi
@@ -15491,7 +15491,7 @@ if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
 else
   ac_cv_os_cray=no
 fi
-rm -f conftest*
+rm -f -r conftest*
 
 fi
 { echo "$as_me:$LINENO: result: $ac_cv_os_cray" >&5
@@ -16787,7 +16787,6 @@ cat >>conftest.$ac_ext <<_ACEOF
 # endif
 #endif
 
-#include <limits.h>
 #include <stdlib.h>
 
 #ifdef HAVE_UNISTD_H
@@ -16936,15 +16935,12 @@ main ()
      isn't worth using anyway.  */
   alarm (60);
 
-  for (;;)
-    {
-      t = (time_t_max << 1) + 1;
-      if (t <= time_t_max)
-	break;
-      time_t_max = t;
-    }
-  time_t_min = - ((time_t) ~ (time_t) 0 == (time_t) -1) - time_t_max;
-
+  for (time_t_max = 1; 0 < time_t_max; time_t_max *= 2)
+    continue;
+  time_t_max--;
+  if ((time_t) -1 < 0)
+    for (time_t_min = -1; (time_t) (time_t_min * 2) < 0; time_t_min *= 2)
+      continue;
   delta = time_t_max / 997; /* a suitable prime number */
   for (i = 0; i < N_STRINGS; i++)
     {
@@ -16959,12 +16955,10 @@ main ()
 	     && mktime_test ((time_t) (60 * 60 * 24))))
 	return 1;
 
-      for (j = 1; ; j <<= 1)
+      for (j = 1; 0 < j; j *= 2)
 	if (! bigtime_test (j))
 	  return 1;
-	else if (INT_MAX / 2 < j)
-	  break;
-      if (! bigtime_test (INT_MAX))
+      if (! bigtime_test (j - 1))
 	return 1;
     }
   return ! (irix_6_4_bug () && spring_forward_gap () && year_2050_test ());
@@ -18816,7 +18810,7 @@ if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
 else
   ac_cv_func_getloadavg_setgid=no
 fi
-rm -f conftest*
+rm -f -r conftest*
 
 fi
 { echo "$as_me:$LINENO: result: $ac_cv_func_getloadavg_setgid" >&5
@@ -18968,7 +18962,7 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 ;;
 esac
-rm -f conftest*
+rm -f -r conftest*
 
 # We used to try defining _XOPEN_SOURCE=500 too, to work around a bug
 # in glibc 2.1.3, but that breaks too many other things.
@@ -24496,7 +24490,7 @@ if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
 else
   CPP_NEED_TRADITIONAL=yes
 fi
-rm -f conftest*
+rm -f -r conftest*
 
 
 ac_config_files="$ac_config_files Makefile lib-src/Makefile.c:lib-src/Makefile.in oldXMenu/Makefile doc/emacs/Makefile doc/misc/Makefile doc/lispintro/Makefile doc/lispref/Makefile src/Makefile.c:src/Makefile.in lwlib/Makefile lisp/Makefile leim/Makefile"
